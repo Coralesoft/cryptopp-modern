@@ -115,7 +115,11 @@ void InvertibleESIGNFunction::GenerateRandom(RandomNumberGenerator &rng, const N
 			throw InvalidArgument("InvertibleESIGNFunction::GenerateRandom: buffer overflow");
 
 		seed.resize(seedParam.size() + 4);
-		std::memcpy(seed + 4, seedParam.begin(), seedParam.size());
+		// Defensive assertion for static analyzers; compiles to no-op in release builds
+		CRYPTOPP_ASSERT(seed.size() >= seedParam.size() + 4);
+
+		// Use .data() so Fortify/Clang retain destination object bounds
+		std::memcpy(seed.data() + 4, seedParam.begin(), seedParam.size());
 
 		PutWord(false, BIG_ENDIAN_ORDER, seed, (word32)0);
 		m_p.GenerateRandom(rng, CombinedNameValuePairs(primeParam, MakeParameters("Seed", ConstByteArrayParameter(seed))));
