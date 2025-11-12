@@ -33,6 +33,9 @@ Currently the library contains the following algorithms:
                                    SHA-3 (224/256), SHA-3 (384/512), SHAKE (128/256),
                                    SipHash, SM3, Tiger, RIPEMD (128/160/256/320), WHIRLPOOL
 
+       password-based key derivation  Argon2 (Argon2d/Argon2i/Argon2id), HKDF, PBKDF1,
+                                   PBKDF2, PBKDF (PKCS #12), Scrypt
+
                                    RSA, DSA, Deterministic DSA, ElGamal,
           public-key cryptography  Nyberg-Rueppel (NR), Rabin-Williams (RW), LUC,
                                    LUCELG, EC-based German Digital Signature (ECGDSA),
