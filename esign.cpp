@@ -119,7 +119,8 @@ void InvertibleESIGNFunction::GenerateRandom(RandomNumberGenerator &rng, const N
 		CRYPTOPP_ASSERT(seed.size() >= seedParam.size() + 4);
 
 		// Use .data() so Fortify/Clang retain destination object bounds
-		std::memcpy(seed.data() + 4, seedParam.begin(), seedParam.size());
+		if (seedParam.size() > 0)
+			std::memcpy(seed.data() + 4, seedParam.begin(), seedParam.size());
 
 		PutWord(false, BIG_ENDIAN_ORDER, seed, (word32)0);
 		m_p.GenerateRandom(rng, CombinedNameValuePairs(primeParam, MakeParameters("Seed", ConstByteArrayParameter(seed))));
