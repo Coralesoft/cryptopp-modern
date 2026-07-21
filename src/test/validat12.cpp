@@ -4776,6 +4776,131 @@ static bool TestFileStoreHSSL1Reopen()
 	}
 }
 
+static bool TestFileStoreHSSL1Exhaustion()
+{
+	const char* name = "FileStateStore + HSS L=1";
+	const std::string path = "test_filestore_hss_l1_exhaust.state";
+	RemoveTestFile(path);
+
+	AutoSeededRandomPool rng;
+
+	try {
+		typedef HSS_SHA256_H5_W8_L1_Params Params;
+
+		HSSPrivateKey<Params> privKey;
+		privKey.GenerateRandom(rng, g_nullNameValuePairs);
+
+		HSSPublicKey<Params> pubKey;
+		privKey.MakePublicKey(pubKey);
+
+		HSSVerifier<Params> verifier(
+			pubKey.GetPublicKeyBytePtr(), pubKey.GetPublicKeyByteLength());
+
+		SecByteBlock sig(Params::SignatureSize());
+
+		auto be32 = [](const byte* p) -> uint32_t {
+			return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) |
+			       (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+		};
+
+		// Sign all 32 leaves; the 33rd attempt throws
+		{
+			FileStateStore store = FileStateStore::Create(path, Params::TotalSignatures());
+			HSSSigner<Params> signer(privKey, store);
+
+			for (unsigned int i = 0; i < 32; i++) {
+				std::string msg = "HSS L=1 exhaust msg " + std::to_string(i);
+				signer.SignMessage(rng,
+					reinterpret_cast<const byte*>(msg.data()), msg.size(),
+					sig.begin());
+
+				uint32_t q = be32(sig.begin() + 4);
+				if (q != i) {
+					std::cout << "FAILED:  " << name << " q " << q
+						<< " != " << i << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+
+				if (!verifier.VerifyMessage(
+						reinterpret_cast<const byte*>(msg.data()), msg.size(),
+						sig.begin(), sig.size())) {
+					std::cout << "FAILED:  " << name << " signature " << i
+						<< " rejected" << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+			}
+
+			if (!signer.IsExhausted() || signer.RemainingSignatures() != 0) {
+				std::cout << "FAILED:  " << name
+					<< " not exhausted after 32 signatures" << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+
+			bool threw = false;
+			try {
+				std::string msg = "One too many";
+				signer.SignMessage(rng,
+					reinterpret_cast<const byte*>(msg.data()), msg.size(),
+					sig.begin());
+			}
+			catch (const SignerExhausted&) {
+				threw = true;
+			}
+
+			if (!threw) {
+				std::cout << "FAILED:  " << name
+					<< " did not throw SignerExhausted on 33rd signature" << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+		}
+
+		// Reopen: still exhausted, no index wrap or reset
+		{
+			FileStateStore store = FileStateStore::Open(path, Params::TotalSignatures());
+
+			if (!store.IsExhausted() || store.RemainingSignatures() != 0) {
+				std::cout << "FAILED:  " << name
+					<< " reopened store not exhausted" << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+
+			HSSSigner<Params> signer(privKey, store);
+
+			bool threw = false;
+			try {
+				std::string msg = "After exhausted reopen";
+				signer.SignMessage(rng,
+					reinterpret_cast<const byte*>(msg.data()), msg.size(),
+					sig.begin());
+			}
+			catch (const SignerExhausted&) {
+				threw = true;
+			}
+
+			if (!threw) {
+				std::cout << "FAILED:  " << name
+					<< " signed after exhausted reopen" << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+		}
+
+		std::cout << "passed:  " << name << " exhaustion (32 sigs, 33rd throws, reopen stays exhausted)" << std::endl;
+		RemoveTestFile(path);
+		return true;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " exhaustion - " << e.what() << std::endl;
+		RemoveTestFile(path);
+		return false;
+	}
+}
+
 static bool TestFileStoreCrossRestartRollbackLimit()
 {
 	// Documented limitation: an older valid file image can reopen after restart.
@@ -5400,6 +5525,7 @@ bool ValidateFileStateStore()
 	pass = TestFileStoreHSSIntegration() && pass;
 	pass = TestFileStoreHSSSubtreeBoundaryRestart() && pass;
 	pass = TestFileStoreHSSL1Reopen() && pass;
+	pass = TestFileStoreHSSL1Exhaustion() && pass;
 
 	return pass;
 }
