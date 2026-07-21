@@ -3134,6 +3134,93 @@ static bool TestHSSSafeFailure()
 	}
 }
 
+// ******************** HSS L=1 Tests ************************* //
+
+template <class HSS_PARAMS>
+static bool TestHSSL1SignVerify(const char* name, size_t expectedPubSize,
+	size_t expectedSigSize, uint64_t expectedCapacity)
+{
+	AutoSeededRandomPool rng;
+
+	try {
+		HSSPrivateKey<HSS_PARAMS> privKey;
+		privKey.GenerateRandom(rng, g_nullNameValuePairs);
+
+		HSSPublicKey<HSS_PARAMS> pubKey;
+		privKey.MakePublicKey(pubKey);
+
+		if (pubKey.GetL() != 1) {
+			std::cout << "FAILED:  " << name << " L != 1" << std::endl;
+			return false;
+		}
+
+		if (pubKey.GetPublicKeyByteLength() != expectedPubSize) {
+			std::cout << "FAILED:  " << name << " public key size "
+				<< pubKey.GetPublicKeyByteLength()
+				<< " != " << expectedPubSize << std::endl;
+			return false;
+		}
+
+		if (HSS_PARAMS::TotalSignatures() != expectedCapacity) {
+			std::cout << "FAILED:  " << name << " capacity "
+				<< HSS_PARAMS::TotalSignatures()
+				<< " != " << expectedCapacity << std::endl;
+			return false;
+		}
+
+		InsecureMemoryStateStore store(HSS_PARAMS::TotalSignatures());
+		HSSSigner<HSS_PARAMS> signer(privKey, store);
+		HSSVerifier<HSS_PARAMS> verifier(
+			pubKey.GetPublicKeyBytePtr(), pubKey.GetPublicKeyByteLength());
+
+		if (signer.SignatureLength() != expectedSigSize) {
+			std::cout << "FAILED:  " << name << " signature size "
+				<< signer.SignatureLength()
+				<< " != " << expectedSigSize << std::endl;
+			return false;
+		}
+
+		std::string msg = "L=1 HSS test message";
+		SecByteBlock sig(signer.SignatureLength());
+		signer.SignMessage(rng,
+			reinterpret_cast<const byte*>(msg.data()), msg.size(),
+			sig.begin());
+
+		// Nspk = L - 1 = 0 (RFC 8554 Section 6.2)
+		if (sig[0] != 0 || sig[1] != 0 || sig[2] != 0 || sig[3] != 0) {
+			std::cout << "FAILED:  " << name << " Nspk not zero" << std::endl;
+			return false;
+		}
+
+		bool valid = verifier.VerifyMessage(
+			reinterpret_cast<const byte*>(msg.data()), msg.size(),
+			sig.begin(), sig.size());
+
+		if (!valid) {
+			std::cout << "FAILED:  " << name << " signature rejected" << std::endl;
+			return false;
+		}
+
+		// Modified message rejected
+		std::string bad = "L=1 HSS test messagX";
+		bool badAccepted = verifier.VerifyMessage(
+			reinterpret_cast<const byte*>(bad.data()), bad.size(),
+			sig.begin(), sig.size());
+
+		if (badAccepted) {
+			std::cout << "FAILED:  " << name << " modified message accepted" << std::endl;
+			return false;
+		}
+
+		std::cout << "passed:  " << name << " sign/verify" << std::endl;
+		return true;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " sign/verify - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // ******************** HSS L=3 Tests ************************* //
 
 static bool TestHSSL3SignVerify()
@@ -3867,6 +3954,16 @@ bool ValidateHSS()
 	pass = TestHSSOutOfRangeReservation() && pass;
 	pass = TestHSSInvalidReservationFromStore() && pass;
 	pass = TestHSSSafeFailure() && pass;
+
+	// HSS L=1: single-level hierarchy, Nspk = 0
+	pass = TestHSSKeyGen<HSS_SHA256_H5_W8_L1_Params>(
+		"HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestHSSKeyGen<HSS_SHA256_H10_W8_L1_Params>(
+		"HSS[1]/LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestHSSL1SignVerify<HSS_SHA256_H5_W8_L1_Params>(
+		"HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8", 60, 1296, 32) && pass;
+	pass = TestHSSL1SignVerify<HSS_SHA256_H10_W8_L1_Params>(
+		"HSS[1]/LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8", 60, 1456, 1024) && pass;
 
 	// HSS L=3 selective tests (non-exhaustive)
 	pass = TestHSSL3SignVerify() && pass;
