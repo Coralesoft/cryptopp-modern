@@ -4693,6 +4693,89 @@ static bool TestFileStoreHSSSubtreeBoundaryRestart()
 	}
 }
 
+static bool TestFileStoreHSSL1Reopen()
+{
+	const char* name = "FileStateStore + HSS L=1";
+	const std::string path = "test_filestore_hss_l1.state";
+	RemoveTestFile(path);
+
+	AutoSeededRandomPool rng;
+
+	try {
+		typedef HSS_SHA256_H5_W8_L1_Params Params;
+
+		HSSPrivateKey<Params> privKey;
+		privKey.GenerateRandom(rng, g_nullNameValuePairs);
+
+		HSSPublicKey<Params> pubKey;
+		privKey.MakePublicKey(pubKey);
+
+		HSSVerifier<Params> verifier(
+			pubKey.GetPublicKeyBytePtr(), pubKey.GetPublicKeyByteLength());
+
+		SecByteBlock sig(Params::SignatureSize());
+
+		auto be32 = [](const byte* p) -> uint32_t {
+			return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) |
+			       (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+		};
+
+		// Three signing sessions: create, then two reopens
+		const unsigned int counts[3] = { 3, 2, 2 };
+		unsigned int next = 0;
+
+		for (int session = 0; session < 3; session++) {
+			FileStateStore store = (session == 0)
+				? FileStateStore::Create(path, Params::TotalSignatures())
+				: FileStateStore::Open(path, Params::TotalSignatures());
+
+			if (store.RemainingSignatures() != Params::TotalSignatures() - next) {
+				std::cout << "FAILED:  " << name << " session " << session
+					<< " remaining " << store.RemainingSignatures()
+					<< " != " << (Params::TotalSignatures() - next) << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+
+			HSSSigner<Params> signer(privKey, store);
+
+			for (unsigned int i = 0; i < counts[session]; i++, next++) {
+				std::string msg = "HSS L=1 reopen msg " + std::to_string(next);
+				signer.SignMessage(rng,
+					reinterpret_cast<const byte*>(msg.data()), msg.size(),
+					sig.begin());
+
+				// LMS q at offset 4, after the Nspk prefix
+				uint32_t q = be32(sig.begin() + 4);
+				if (q != next) {
+					std::cout << "FAILED:  " << name << " session " << session
+						<< " q " << q << " != " << next << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+
+				if (!verifier.VerifyMessage(
+						reinterpret_cast<const byte*>(msg.data()), msg.size(),
+						sig.begin(), sig.size())) {
+					std::cout << "FAILED:  " << name << " signature " << next
+						<< " rejected" << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+			}
+		}
+
+		std::cout << "passed:  " << name << " store reopen continuity" << std::endl;
+		RemoveTestFile(path);
+		return true;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " reopen - " << e.what() << std::endl;
+		RemoveTestFile(path);
+		return false;
+	}
+}
+
 static bool TestFileStoreCrossRestartRollbackLimit()
 {
 	// Documented limitation: an older valid file image can reopen after restart.
@@ -5316,6 +5399,7 @@ bool ValidateFileStateStore()
 	pass = TestFileStoreLMSIntegration() && pass;
 	pass = TestFileStoreHSSIntegration() && pass;
 	pass = TestFileStoreHSSSubtreeBoundaryRestart() && pass;
+	pass = TestFileStoreHSSL1Reopen() && pass;
 
 	return pass;
 }
