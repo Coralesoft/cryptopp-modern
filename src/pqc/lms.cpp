@@ -1391,7 +1391,7 @@ void HSSSigner<HSS_PARAMS>::DecomposeGlobalIndex(uint64_t globalIndex,
                                                   uint32_t *perLevel,
                                                   unsigned int levels)
 {
-    CRYPTOPP_ASSERT(levels >= 2 && levels <= 4);
+    CRYPTOPP_ASSERT(levels >= 1 && levels <= 4);
     CRYPTOPP_ASSERT(globalIndex < HSS_PARAMS::TotalSignatures());
 
     uint64_t leaves[HSS_PARAMS::L] = {};
@@ -1650,6 +1650,16 @@ void HSSSigner<HSS_PARAMS>::ProduceSignature(
 }
 
 // ******************** Explicit HSS Template Instantiations ************************* //
+
+template class HSSPublicKey<HSS_SHA256_H5_W8_L1_Params>;
+template class HSSPrivateKey<HSS_SHA256_H5_W8_L1_Params>;
+template class HSSVerifier<HSS_SHA256_H5_W8_L1_Params>;
+template class HSSSigner<HSS_SHA256_H5_W8_L1_Params>;
+
+template class HSSPublicKey<HSS_SHA256_H10_W8_L1_Params>;
+template class HSSPrivateKey<HSS_SHA256_H10_W8_L1_Params>;
+template class HSSVerifier<HSS_SHA256_H10_W8_L1_Params>;
+template class HSSSigner<HSS_SHA256_H10_W8_L1_Params>;
 
 template class HSSPublicKey<HSS_SHA256_H5_W8_L2_Params>;
 template class HSSPublicKey<HSS_SHA256_H10_W8_L2_Params>;

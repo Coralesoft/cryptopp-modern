@@ -203,7 +203,7 @@ struct HSSLevel
 };
 
 /// \brief HSS parameter set with per-level LMS and LM-OTS choices
-/// \tparam Levels two to four HSSLevel descriptors, top (root) level first
+/// \tparam Levels one to four HSSLevel descriptors, top (root) level first
 /// \details Uniform configurations repeat the same HSSLevel at every level.
 ///  All levels must share one LM-OTS hash output size N, and each level's
 ///  LMS hash output size M must match its LM-OTS N.
@@ -211,7 +211,7 @@ struct HSSLevel
 template <class... Levels>
 struct HSS_Params
 {
-    static_assert(sizeof...(Levels) >= 2, "HSS requires at least 2 levels");
+    static_assert(sizeof...(Levels) >= 1, "HSS requires at least 1 level");
     static_assert(sizeof...(Levels) <= 4, "HSS supports up to 4 levels");
     static_assert(HSS_Internal::SameN<Levels...>::value,
         "HSS levels must share one LM-OTS hash output size N");
@@ -615,6 +615,16 @@ struct HSS
 
 /// \name HSS Scheme Typedefs
 //@{
+
+/// 1-level HSS with H5/W8: 32 signatures
+typedef HSS_Params<
+    HSSLevel<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> > HSS_SHA256_H5_W8_L1_Params;
+typedef HSS<HSS_SHA256_H5_W8_L1_Params> HSS_SHA256_H5_W8_L1;
+
+/// 1-level HSS with H10/W8: 1,024 signatures
+typedef HSS_Params<
+    HSSLevel<LMS_SHA256_M32_H10, LMOTS_SHA256_N32_W8> > HSS_SHA256_H10_W8_L1_Params;
+typedef HSS<HSS_SHA256_H10_W8_L1_Params> HSS_SHA256_H10_W8_L1;
 
 /// 2-level HSS with H5/W8: 1,024 signatures
 typedef HSS_Params<
