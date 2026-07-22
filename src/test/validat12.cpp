@@ -5221,6 +5221,202 @@ static bool TestFileStoreHSSL1Exhaustion()
 	}
 }
 
+static bool TestFileStoreLMSHSSL1Continuity()
+{
+	// LMS and HSS L=1 use the same tree for a shared seed and identifier.
+	// Switching between them must continue the same signing state; a fresh
+	// store would reuse LM-OTS indices.
+	const char* name = "FileStateStore + LMS/HSS L=1 continuity";
+	const std::string path = "test_filestore_lms_hss_l1.state";
+	RemoveTestFile(path);
+
+	AutoSeededRandomPool rng;
+
+	static const byte seed[32] = {
+		0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x47,
+		0x48,0x49,0x4a,0x4b,0x4c,0x4d,0x4e,0x4f,
+		0x50,0x51,0x52,0x53,0x54,0x55,0x56,0x57,
+		0x58,0x59,0x5a,0x5b,0x5c,0x5d,0x5e,0x5f };
+	static const byte ident[16] = {
+		0x60,0x61,0x62,0x63,0x64,0x65,0x66,0x67,
+		0x68,0x69,0x6a,0x6b,0x6c,0x6d,0x6e,0x6f };
+
+	try {
+		typedef LMS_SHA256_M32_H5 LMS_P;
+		typedef LMOTS_SHA256_N32_W8 OTS_P;
+		typedef HSS_SHA256_H5_W8_L1_Params HParams;
+
+		auto be32 = [](const byte* p) -> uint32_t {
+			return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) |
+			       (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+		};
+
+		LMSPrivateKey<LMS_P, OTS_P> lmsPriv;
+		lmsPriv.SetPrivateKey(seed, sizeof(seed), ident, sizeof(ident));
+		LMSPublicKey<LMS_P, OTS_P> lmsPub;
+		lmsPriv.MakePublicKey(lmsPub);
+		LMSVerifier<LMS_P, OTS_P> lmsVerifier(
+			lmsPub.GetPublicKeyBytePtr(), lmsPub.GetPublicKeyByteLength());
+
+		HSSPrivateKey<HParams> hssPriv;
+		hssPriv.SetPrivateKey(seed, sizeof(seed), ident, sizeof(ident));
+		HSSPublicKey<HParams> hssPub;
+		hssPriv.MakePublicKey(hssPub);
+		HSSVerifier<HParams> hssVerifier(
+			hssPub.GetPublicKeyBytePtr(), hssPub.GetPublicKeyByteLength());
+
+		// The HSS L=1 public key is u32str(1) || the LMS public key
+		if (hssPub.GetPublicKeyByteLength() != 4 + lmsPub.GetPublicKeyByteLength() ||
+			be32(hssPub.GetPublicKeyBytePtr()) != 1 ||
+			!VerifyBufsEqual(hssPub.GetPublicKeyBytePtr() + 4,
+				lmsPub.GetPublicKeyBytePtr(), lmsPub.GetPublicKeyByteLength())) {
+			std::cout << "FAILED:  " << name
+				<< " HSS L=1 public key does not embed the LMS key" << std::endl;
+			RemoveTestFile(path);
+			return false;
+		}
+
+		// Session 1: LMS signs indices 0-2
+		{
+			FileStateStore store = FileStateStore::Create(path, LMS_P::TOTAL_LEAVES);
+			LMSSigner<LMS_P, OTS_P> signer(lmsPriv, store);
+			SecByteBlock sig(signer.SignatureLength());
+
+			for (unsigned int i = 0; i < 3; i++) {
+				std::string msg = "state continuity msg " + std::to_string(i);
+				signer.SignMessage(rng,
+					reinterpret_cast<const byte*>(msg.data()), msg.size(),
+					sig.begin());
+
+				// LMS q at offset 0
+				if (be32(sig.begin()) != i) {
+					std::cout << "FAILED:  " << name << " LMS q "
+						<< be32(sig.begin()) << " != " << i << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+
+				if (!lmsVerifier.VerifyMessage(
+						reinterpret_cast<const byte*>(msg.data()), msg.size(),
+						sig.begin(), sig.size())) {
+					std::cout << "FAILED:  " << name << " LMS signature " << i
+						<< " rejected" << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+			}
+
+			if (store.RemainingSignatures() != LMS_P::TOTAL_LEAVES - 3) {
+				std::cout << "FAILED:  " << name
+					<< " next index after LMS session" << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+		}
+
+		// Session 2: HSS L=1 reopens the same store and continues at 3
+		{
+			FileStateStore store = FileStateStore::Open(path, HParams::TotalSignatures());
+
+			if (store.RemainingSignatures() != HParams::TotalSignatures() - 3) {
+				std::cout << "FAILED:  " << name
+					<< " persisted index not visible to HSS" << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+
+			HSSSigner<HParams> signer(hssPriv, store);
+			SecByteBlock sig(signer.SignatureLength());
+
+			for (unsigned int i = 3; i < 5; i++) {
+				std::string msg = "state continuity msg " + std::to_string(i);
+				signer.SignMessage(rng,
+					reinterpret_cast<const byte*>(msg.data()), msg.size(),
+					sig.begin());
+
+				// Underlying LMS q at offset 4, after Nspk
+				if (be32(sig.begin() + 4) != i) {
+					std::cout << "FAILED:  " << name << " HSS q "
+						<< be32(sig.begin() + 4) << " != " << i << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+
+				if (!hssVerifier.VerifyMessage(
+						reinterpret_cast<const byte*>(msg.data()), msg.size(),
+						sig.begin(), sig.size())) {
+					std::cout << "FAILED:  " << name << " HSS signature " << i
+						<< " rejected" << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+			}
+
+			if (store.RemainingSignatures() != HParams::TotalSignatures() - 5) {
+				std::cout << "FAILED:  " << name
+					<< " next index after HSS session" << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+		}
+
+		// Session 3: LMS reopens after HSS and resumes at 5
+		{
+			FileStateStore store = FileStateStore::Open(path, LMS_P::TOTAL_LEAVES);
+
+			if (store.RemainingSignatures() != LMS_P::TOTAL_LEAVES - 5) {
+				std::cout << "FAILED:  " << name
+					<< " persisted index not visible to LMS" << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+
+			LMSSigner<LMS_P, OTS_P> signer(lmsPriv, store);
+			SecByteBlock sig(signer.SignatureLength());
+
+			for (unsigned int i = 5; i < 7; i++) {
+				std::string msg = "state continuity msg " + std::to_string(i);
+				signer.SignMessage(rng,
+					reinterpret_cast<const byte*>(msg.data()), msg.size(),
+					sig.begin());
+
+				if (be32(sig.begin()) != i) {
+					std::cout << "FAILED:  " << name << " LMS resumed q "
+						<< be32(sig.begin()) << " != " << i << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+
+				if (!lmsVerifier.VerifyMessage(
+						reinterpret_cast<const byte*>(msg.data()), msg.size(),
+						sig.begin(), sig.size())) {
+					std::cout << "FAILED:  " << name << " resumed LMS signature " << i
+						<< " rejected" << std::endl;
+					RemoveTestFile(path);
+					return false;
+				}
+			}
+
+			if (store.RemainingSignatures() != LMS_P::TOTAL_LEAVES - 7) {
+				std::cout << "FAILED:  " << name
+					<< " next index after resumed LMS session" << std::endl;
+				RemoveTestFile(path);
+				return false;
+			}
+		}
+
+		std::cout << "passed:  " << name
+			<< " (LMS 0-2, HSS 3-4, LMS 5-6, no index reuse)" << std::endl;
+		RemoveTestFile(path);
+		return true;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " - " << e.what() << std::endl;
+		RemoveTestFile(path);
+		return false;
+	}
+}
+
 static bool TestFileStoreCrossRestartRollbackLimit()
 {
 	// Documented limitation: an older valid file image can reopen after restart.
@@ -5846,6 +6042,7 @@ bool ValidateFileStateStore()
 	pass = TestFileStoreHSSSubtreeBoundaryRestart() && pass;
 	pass = TestFileStoreHSSL1Reopen() && pass;
 	pass = TestFileStoreHSSL1Exhaustion() && pass;
+	pass = TestFileStoreLMSHSSL1Continuity() && pass;
 
 	return pass;
 }
