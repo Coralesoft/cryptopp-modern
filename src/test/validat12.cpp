@@ -3336,6 +3336,67 @@ static bool TestHSSL1MalformedSignatures()
 	}
 }
 
+static bool TestHSSL1CrossLevelReject()
+{
+	AutoSeededRandomPool rng;
+	const char* name = "HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8";
+
+	try {
+		typedef HSS_SHA256_H5_W8_L1_Params L1Params;
+		typedef HSS_SHA256_H5_W8_L2_Params L2Params;
+
+		HSSPrivateKey<L1Params> privL1;
+		privL1.GenerateRandom(rng, g_nullNameValuePairs);
+
+		InsecureMemoryStateStore store(L1Params::TotalSignatures());
+		HSSSigner<L1Params> signer(privL1, store);
+
+		std::string message = "L=1 cross-level test";
+		SecByteBlock sig(signer.SignatureLength());
+		signer.SignMessage(rng,
+			reinterpret_cast<const byte*>(message.data()), message.size(),
+			sig.begin());
+
+		HSSPublicKey<L1Params> pubL1;
+		privL1.MakePublicKey(pubL1);
+
+		// Same root LMS key under an L = 2 prefix; only the level differs
+		SecByteBlock l2PublicKey(
+			pubL1.GetPublicKeyBytePtr(), pubL1.GetPublicKeyByteLength());
+		l2PublicKey[0] = 0;
+		l2PublicKey[1] = 0;
+		l2PublicKey[2] = 0;
+		l2PublicKey[3] = 2;
+
+		HSSVerifier<L2Params> verifierL2(
+			l2PublicKey.begin(), l2PublicKey.size());
+
+		bool accepted;
+		try {
+			accepted = verifierL2.VerifyMessage(
+				reinterpret_cast<const byte*>(message.data()), message.size(),
+				sig.begin(), sig.size());
+		}
+		catch (const Exception&) {
+			// Throwing on an L=1 signature under an L=2 key is acceptable.
+			accepted = false;
+		}
+
+		if (accepted) {
+			std::cout << "FAILED:  " << name
+				<< " L=1 signature accepted by L=2 verifier" << std::endl;
+			return false;
+		}
+
+		std::cout << "passed:  " << name << " cross-level rejection" << std::endl;
+		return true;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " cross-level - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // ******************** HSS L=3 Tests ************************* //
 
 static bool TestHSSL3SignVerify()
@@ -4080,6 +4141,11 @@ bool ValidateHSS()
 	pass = TestHSSL1SignVerify<HSS_SHA256_H10_W8_L1_Params>(
 		"HSS[1]/LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8", 60, 1456, 1024) && pass;
 	pass = TestHSSL1MalformedSignatures() && pass;
+	pass = TestHSSCrossKeyNegative<HSS_SHA256_H5_W8_L1_Params>(
+		"HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestHSSL1CrossLevelReject() && pass;
+	pass = TestHSSSerialization<HSS_SHA256_H5_W8_L1_Params>(
+		"HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 
 	// HSS L=3 selective tests (non-exhaustive)
 	pass = TestHSSL3SignVerify() && pass;
