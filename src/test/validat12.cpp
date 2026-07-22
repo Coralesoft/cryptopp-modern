@@ -3397,6 +3397,143 @@ static bool TestHSSL1CrossLevelReject()
 	}
 }
 
+static bool TestHSSL1HashSigsInterop()
+{
+	// L=1 fixture from the Cisco hash-sigs reference implementation,
+	// github.com/cisco/hash-sigs commit
+	// 0335491815c908cad85d6035d43785693a4e91f9, built with gcc 13.3.0
+	// on Ubuntu 24.04. Commands: make hss_lib.a (stock Makefile,
+	// USE_OPENSSL=1), then gcc -O2 -o gen_hashsigs_l1_fixture
+	// gen_hashsigs_l1_fixture.c hss_lib.a -lcrypto. The harness calls
+	// hss_generate_private_key / hss_generate_signature with levels=1,
+	// LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W8 and a deterministic
+	// generate_random emitting 32-byte SHA256(seed || u32str(counter))
+	// blocks truncated to the requested length, counter global across
+	// calls starting at 0, seed = 00 01 02 .. 1f; first signature
+	// (q = 0) over the ASCII message below. RFC 8554 Appendix F has no
+	// L=1 vector, so this checks single-level verification against the
+	// reference.
+	const char* name = "HSS L=1 hash-sigs interop";
+
+	try {
+		typedef HSS_SHA256_H5_W8_L1_Params Params;
+
+		// Public key (60 bytes)
+		const char* pkHex =
+			"00000001000000050000000404a6950a06d3e3308ad7d3606ef810eb"
+			"0ec1fefa59d70c1f177fdfffc1b1182ea64082781380c34c1c030300"
+			"570b742e";
+
+		// Message: "cryptopp-modern HSS L=1 interop"
+		const char* msgHex =
+			"63727970746f70702d6d6f6465726e20485353204c3d3120696e7465"
+			"726f70";
+
+		// Signature (1296 bytes)
+		const char* sigHex =
+			"00000000000000000000000472705982b27b76167b78223bd80e9302"
+			"c73158eed140f2610019a05d361c32ff465c5eedb9dedb6ed138eba9"
+			"fb8c28d2aba2c5ba3f9af74f375f31e1051f2de9f942fb5557263336"
+			"90befb1cbf1e09130ec7f79403273b52e19eba735161c9e86c31dab1"
+			"432350d1fb502eaf7f6e47f8187b14e468f253a15c5b4e585e6d2c71"
+			"e291f1be78d8d6e527f58018f956b619ab61f11141ae07255ba5becd"
+			"4ec958b4c5c7524d1222aa797ac061ad50a4f6cd8a095558dabb7b51"
+			"120ece87d74bc5457c3896f4956cbb912d39942ef18366b5ce050c38"
+			"397d8fd022d9f7b79adbfe4e074a03bf80d2402fa244a741fe002da5"
+			"c87b524587d10d4fb257b93ccb7594aca6ade9a172af751f7ff42e96"
+			"8ead2356f1f30f715c0b829e1444d738b124b90b0128434acadf028b"
+			"4b933c5d12831d859db94e15a6978bdcc48a45feccf4fd996139a8e3"
+			"5b42cd7dbcde354906cafbfeb905235e07d7ccd607d0a9953b6e70ba"
+			"90b40173b2318d9bdc777d7482b52f9996e199c5fedbe544e2d7251c"
+			"d86954a1736fa23f4a939586b7c4402becbdfe7c6b848a89d79f3692"
+			"14843bb40019d1d3f68657aba5585c64be04a9776f60eb1f3a90d8c6"
+			"76f22b632aaec702c9b149b56447376fc045e6d48aee0e6772353dfb"
+			"4e1ebb4bd2613110f9c06c2ac97d2148b678156fd9ad13fdd817a3ec"
+			"9fe75e6ff792cf82a6a8e7afa3430a9a35be55bc49742715b7422d53"
+			"b3ea81bf81f2cf8b831284562ed860d5a6a3a42f31f7e43aff6a6fc7"
+			"e4a0ebfbbce3d5502d99063eee404225f3a84b64875f2ea9d07131d3"
+			"2d422a011181d1d044cfd77e6e9b8e8c400d744c89a6f6c5cf6d29a3"
+			"e6ef74d916893752270212d61601d9a278f7fd24360bbbd27b9f6a1b"
+			"fdb843cc0f7d6e35abd7db68b6c92c5314c3fa802cb07d64d767cc47"
+			"be48b52aaef523c802723a16ec90d6cfc0dadffc455a361118fc36a0"
+			"bc19ae27b9bf0997b9f0e0dc5e287a891e117af77ea139d8189a552a"
+			"ff7672b38e4fe15d8280ff8ed4e684f56a56cdc95b270bb53baa67f2"
+			"f3760720da009728d4ddb8fcb22c6f25bdb22c65af239d76e80bd0dc"
+			"e76ab83c84299f149fd8a4950f9dc0ae008c4b7324950e1af5df28ed"
+			"e3e7a124023d033fd6f463a99dadda1470cac571309ce785dc61533d"
+			"753363632548c6ce6800dd14743511a7fca56bbea92f5414c56c2005"
+			"a997fe26ba60c1c6348c0898a431232600e51167498d276501a1266b"
+			"03db6f8ae08d767c67fc5aee414ee27a5c52239a5c7665de56d94d05"
+			"aba5d3a9d34424cd723202e11fe9a47baa7295fbe9db9a0329a1f6d1"
+			"f63e259af859df2ddbf4b9659148a4083d09611309d8d883c454d78b"
+			"562d5217c8d1fb9f56a5a0724cf866f34c2bef0347a91bc2d0e5662b"
+			"72c4531a6a58d0da964b58fdc10d5f09185191c23e07acb9381de053"
+			"6a639ddb31928f250531c0b25834aacdd859c80fce2add6631550571"
+			"9435f5ae7530c77b748f0a24f496faf5f7bd857cd6f8f39f2c13b86c"
+			"04377d0984a11bcfd3727e32e7f2b330022778fac038e34be5571eed"
+			"ac783f078f69322bcd8ee70900000005b5bfd80fd09b6fd11da354ce"
+			"9dd7dbd289dea8ba53a5a4a2cc06376c721beb5a64dbcb5241e56d57"
+			"2d0d3a7e905bd8deb574017d517d4d2af1bef5c4edbdfc67e9a79db5"
+			"d1c092def34967306fd25264ab0e77027f6911ac42589c10b199f34c"
+			"b61aa3e98b54ec767e312171d693b0d41b9da651bc8928483b3fdccb"
+			"852606b272c94fef3fc1745211065281a279166e7aabb211da66f554"
+			"377fc7c58bcbd343";
+
+		std::string pkStr, msgStr, sigStr;
+		StringSource(pkHex, true, new HexDecoder(new StringSink(pkStr)));
+		StringSource(msgHex, true, new HexDecoder(new StringSink(msgStr)));
+		StringSource(sigHex, true, new HexDecoder(new StringSink(sigStr)));
+
+		// Fixed fixture dimensions, independent of the Params formulas
+		if (pkStr.size() != 60) {
+			std::cout << "FAILED:  " << name << " public key size " << pkStr.size()
+				<< " != 60" << std::endl;
+			return false;
+		}
+		if (msgStr.size() != 31) {
+			std::cout << "FAILED:  " << name << " message size " << msgStr.size()
+				<< " != 31" << std::endl;
+			return false;
+		}
+		if (sigStr.size() != 1296) {
+			std::cout << "FAILED:  " << name << " signature size " << sigStr.size()
+				<< " != 1296" << std::endl;
+			return false;
+		}
+
+		HSSVerifier<Params> verifier(
+			reinterpret_cast<const byte*>(pkStr.data()), pkStr.size());
+
+		bool valid = verifier.VerifyMessage(
+			reinterpret_cast<const byte*>(msgStr.data()), msgStr.size(),
+			reinterpret_cast<const byte*>(sigStr.data()), sigStr.size());
+
+		if (!valid) {
+			std::cout << "FAILED:  " << name << " signature verification" << std::endl;
+			return false;
+		}
+
+		// Modified message rejected
+		std::string badMsg(msgStr);
+		badMsg[0] ^= 1;
+
+		if (verifier.VerifyMessage(
+				reinterpret_cast<const byte*>(badMsg.data()), badMsg.size(),
+				reinterpret_cast<const byte*>(sigStr.data()), sigStr.size())) {
+			std::cout << "FAILED:  " << name
+				<< " modified message accepted" << std::endl;
+			return false;
+		}
+
+		std::cout << "passed:  " << name << " verification" << std::endl;
+		return true;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // ******************** HSS L=3 Tests ************************* //
 
 static bool TestHSSL3SignVerify()
@@ -4146,6 +4283,7 @@ bool ValidateHSS()
 	pass = TestHSSL1CrossLevelReject() && pass;
 	pass = TestHSSSerialization<HSS_SHA256_H5_W8_L1_Params>(
 		"HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestHSSL1HashSigsInterop() && pass;
 
 	// HSS L=3 selective tests (non-exhaustive)
 	pass = TestHSSL3SignVerify() && pass;
