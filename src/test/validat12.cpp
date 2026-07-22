@@ -3221,6 +3221,121 @@ static bool TestHSSL1SignVerify(const char* name, size_t expectedPubSize,
 	}
 }
 
+static bool TestHSSL1MalformedSignatures()
+{
+	AutoSeededRandomPool rng;
+	const char* name = "HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8";
+
+	try {
+		typedef HSS_SHA256_H5_W8_L1_Params Params;
+
+		HSSPrivateKey<Params> privKey;
+		privKey.GenerateRandom(rng, g_nullNameValuePairs);
+
+		HSSPublicKey<Params> pubKey;
+		privKey.MakePublicKey(pubKey);
+
+		InsecureMemoryStateStore store(Params::TotalSignatures());
+		HSSSigner<Params> signer(privKey, store);
+		HSSVerifier<Params> verifier(
+			pubKey.GetPublicKeyBytePtr(), pubKey.GetPublicKeyByteLength());
+
+		std::string message = "L=1 malformed signature test";
+		SecByteBlock validSig(signer.SignatureLength());
+		signer.SignMessage(rng,
+			reinterpret_cast<const byte*>(message.data()), message.size(),
+			validSig.begin());
+
+		if (!verifier.VerifyMessage(
+				reinterpret_cast<const byte*>(message.data()), message.size(),
+				validSig.begin(), validSig.size())) {
+			std::cout << "FAILED:  " << name << " valid sig rejected (sanity)" << std::endl;
+			return false;
+		}
+
+		// Throwing on malformed input is acceptable; treat it as rejection.
+		auto accepts = [&](const byte* sig, size_t len) -> bool {
+			try {
+				return verifier.VerifyMessage(
+					reinterpret_cast<const byte*>(message.data()), message.size(),
+					sig, len);
+			}
+			catch (const Exception&) {
+				return false;
+			}
+		};
+
+		unsigned int rejected = 0;
+
+		// 1. Nspk = 1 instead of 0
+		{
+			SecByteBlock bad(validSig);
+			bad[3] = 1;
+			if (!accepts(bad.begin(), bad.size()))
+				rejected++;
+			else {
+				std::cout << "FAILED:  " << name << " Nspk=1 accepted" << std::endl;
+				return false;
+			}
+		}
+
+		// 2. Missing four-byte Nspk prefix (raw LMS signature)
+		if (!accepts(validSig.begin() + 4, validSig.size() - 4))
+			rejected++;
+		else {
+			std::cout << "FAILED:  " << name << " missing Nspk prefix accepted" << std::endl;
+			return false;
+		}
+
+		// 3-6. Empty signature and signature truncated within the four-byte Nspk field
+		for (size_t len = 0; len <= 3; len++) {
+			if (!accepts(validSig.begin(), len))
+				rejected++;
+			else {
+				std::cout << "FAILED:  " << name << " " << len
+					<< "-byte Nspk prefix accepted" << std::endl;
+				return false;
+			}
+		}
+
+		// 7. Valid signature with trailing bytes
+		{
+			SecByteBlock bad(validSig);
+			bad.CleanGrow(bad.size() + 4);
+			if (!accepts(bad.begin(), bad.size()))
+				rejected++;
+			else {
+				std::cout << "FAILED:  " << name << " trailing bytes accepted" << std::endl;
+				return false;
+			}
+		}
+
+		// 8. Truncated LMS body after a valid Nspk = 0 prefix
+		if (!accepts(validSig.begin(), validSig.size() - 32))
+			rejected++;
+		else {
+			std::cout << "FAILED:  " << name << " truncated LMS body accepted" << std::endl;
+			return false;
+		}
+
+		// Valid control still verifies after the negatives
+		if (!verifier.VerifyMessage(
+				reinterpret_cast<const byte*>(message.data()), message.size(),
+				validSig.begin(), validSig.size())) {
+			std::cout << "FAILED:  " << name << " valid control rejected" << std::endl;
+			return false;
+		}
+
+		std::cout << "passed:  " << name << " malformed signature rejection ("
+			<< rejected << " cases)" << std::endl;
+		return true;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " malformed signatures - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // ******************** HSS L=3 Tests ************************* //
 
 static bool TestHSSL3SignVerify()
@@ -3964,6 +4079,7 @@ bool ValidateHSS()
 		"HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8", 60, 1296, 32) && pass;
 	pass = TestHSSL1SignVerify<HSS_SHA256_H10_W8_L1_Params>(
 		"HSS[1]/LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8", 60, 1456, 1024) && pass;
+	pass = TestHSSL1MalformedSignatures() && pass;
 
 	// HSS L=3 selective tests (non-exhaustive)
 	pass = TestHSSL3SignVerify() && pass;
