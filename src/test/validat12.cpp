@@ -733,6 +733,163 @@ static bool TestLMSDualFormDecode()
 	return pass;
 }
 
+// Assembles SEQUENCE { algId, BIT STRING { unusedBits, payload } }. All
+// lengths here fit in one byte, so no long-form DER lengths are needed.
+static std::string BuildLMSSpki(const char* algIdHex, byte unusedBits,
+	const std::string& payload)
+{
+	std::string algId;
+	StringSource(algIdHex, true, new HexDecoder(new StringSink(algId)));
+
+	std::string spki;
+	spki += static_cast<char>(0x30);
+	spki += static_cast<char>(algId.size() + 2 + 1 + payload.size());
+	spki += algId;
+	spki += static_cast<char>(0x03);
+	spki += static_cast<char>(1 + payload.size());
+	spki += static_cast<char>(unusedBits);
+	spki += payload;
+	return spki;
+}
+
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool ExpectLMSSpkiReject(const char* name, const char* label,
+	const std::string& spki, const SecByteBlock& seeded)
+{
+	typedef LMSPublicKey<LMS_PARAMS, OTS_PARAMS> PubKeyType;
+
+	PubKeyType key;
+	key.SetPublicKey(seeded.begin(), seeded.size());
+
+	bool rejected = false;
+	try {
+		StringSource source(spki, true);
+		key.BERDecode(source);
+	}
+	catch (const BERDecodeErr&) {
+		rejected = true;
+	}
+
+	if (!rejected) {
+		std::cout << "FAILED:  " << name << " " << label << " accepted" << std::endl;
+		return false;
+	}
+	if (!VerifyBufsEqual(key.GetPublicKeyBytePtr(), seeded.begin(), seeded.size())) {
+		std::cout << "FAILED:  " << name << " " << label << " changed the key" << std::endl;
+		return false;
+	}
+	return true;
+}
+
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool ExpectLMSSpkiInvalid(const char* name, const char* label,
+	const std::string& spki, RandomNumberGenerator& rng)
+{
+	typedef LMSPublicKey<LMS_PARAMS, OTS_PARAMS> PubKeyType;
+
+	PubKeyType key;
+	try {
+		StringSource source(spki, true);
+		key.BERDecode(source);
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " " << label << " decode - " << e.what() << std::endl;
+		return false;
+	}
+	if (key.Validate(rng, 1)) {
+		std::cout << "FAILED:  " << name << " " << label << " validated" << std::endl;
+		return false;
+	}
+	return true;
+}
+
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool TestLMSMalformedSpki(const char* name)
+{
+	AutoSeededRandomPool rng;
+
+	try {
+		typedef LMSPublicKey<LMS_PARAMS, OTS_PARAMS> PubKeyType;
+		const char* algId = "300D060B2A864886F70D0109100311";
+
+		LMSPrivateKey<LMS_PARAMS, OTS_PARAMS> privKey;
+		privKey.GenerateRandom(rng, g_nullNameValuePairs);
+		PubKeyType pubKey;
+		privKey.MakePublicKey(pubKey);
+
+		std::string rawKey(reinterpret_cast<const char*>(pubKey.GetPublicKeyBytePtr()),
+			PubKeyType::PUBLIC_KEY_SIZE);
+		std::string rfcPayload = std::string("\x00\x00\x00\x01", 4) + rawKey;
+
+		// Seed with a different key value so a failed decode that commits the
+		// incoming key cannot be mistaken for an unchanged destination.
+		SecByteBlock seeded(pubKey.GetPublicKeyBytePtr(), PubKeyType::PUBLIC_KEY_SIZE);
+		seeded[seeded.size() - 1] ^= 0xFF;
+
+		PubKeyType control;
+		StringSource controlSource(BuildLMSSpki(algId, 0, rfcPayload), true);
+		control.BERDecode(controlSource);
+		if (!VerifyBufsEqual(control.GetPublicKeyBytePtr(),
+			reinterpret_cast<const byte*>(rawKey.data()),
+			PubKeyType::PUBLIC_KEY_SIZE)) {
+			std::cout << "FAILED:  " << name << " valid control decode (setup)" << std::endl;
+			return false;
+		}
+
+		bool pass = true;
+
+		std::string badLevel = rfcPayload;
+		badLevel[3] = 0x02;
+		pass = ExpectLMSSpkiReject<LMS_PARAMS, OTS_PARAMS>(name, "leading word 2",
+			BuildLMSSpki(algId, 0, badLevel), seeded) && pass;
+		badLevel[3] = 0x00;
+		pass = ExpectLMSSpkiReject<LMS_PARAMS, OTS_PARAMS>(name, "leading word 0",
+			BuildLMSSpki(algId, 0, badLevel), seeded) && pass;
+
+		const size_t badLens[] = {55, 57, 59, 61};
+		for (size_t i = 0; i < sizeof(badLens) / sizeof(badLens[0]); i++) {
+			std::string bad = rfcPayload;
+			bad.resize(badLens[i], '\0');
+			std::string label = "payload length " + IntToString(badLens[i]);
+			pass = ExpectLMSSpkiReject<LMS_PARAMS, OTS_PARAMS>(name, label.c_str(),
+				BuildLMSSpki(algId, 0, bad), seeded) && pass;
+		}
+
+		pass = ExpectLMSSpkiReject<LMS_PARAMS, OTS_PARAMS>(name, "nonzero unused bits",
+			BuildLMSSpki(algId, 1, rfcPayload), seeded) && pass;
+		pass = ExpectLMSSpkiReject<LMS_PARAMS, OTS_PARAMS>(name, "wrong OID",
+			BuildLMSSpki("300D060B2A864886F70D0109100312", 0, rfcPayload), seeded) && pass;
+		pass = ExpectLMSSpkiReject<LMS_PARAMS, OTS_PARAMS>(name, "NULL parameters",
+			BuildLMSSpki("300F060B2A864886F70D01091003110500", 0, rfcPayload), seeded) && pass;
+
+		// Mismatched embedded typecodes decode structurally but fail Validate().
+		std::string badType = rfcPayload;
+		badType[7] ^= 0x01;
+		pass = ExpectLMSSpkiInvalid<LMS_PARAMS, OTS_PARAMS>(name, "RFC form LMS typecode",
+			BuildLMSSpki(algId, 0, badType), rng) && pass;
+		badType = rfcPayload;
+		badType[11] ^= 0x01;
+		pass = ExpectLMSSpkiInvalid<LMS_PARAMS, OTS_PARAMS>(name, "RFC form OTS typecode",
+			BuildLMSSpki(algId, 0, badType), rng) && pass;
+		badType = rawKey;
+		badType[3] ^= 0x01;
+		pass = ExpectLMSSpkiInvalid<LMS_PARAMS, OTS_PARAMS>(name, "legacy form LMS typecode",
+			BuildLMSSpki(algId, 0, badType), rng) && pass;
+		badType = rawKey;
+		badType[7] ^= 0x01;
+		pass = ExpectLMSSpkiInvalid<LMS_PARAMS, OTS_PARAMS>(name, "legacy form OTS typecode",
+			BuildLMSSpki(algId, 0, badType), rng) && pass;
+
+		if (pass)
+			std::cout << "passed:  " << name << " malformed SPKI cases (13 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " malformed SPKI - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // ******************** NIST ACVP Known-Answer Tests ************************* //
 
 static bool HexDecode(const char *hexStr, byte *out, size_t outLen)
@@ -1543,6 +1700,8 @@ bool ValidateLMS()
 
 	// SPKI decode fixtures, legacy and RFC 9802 forms
 	pass = TestLMSDualFormDecode() && pass;
+	pass = TestLMSMalformedSpki<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 
 	// SHA-256/N32 LM-OTS family at H5: W1, W2, W4
 	pass = TestLMSSignVerify<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W1>(
