@@ -652,6 +652,87 @@ static bool TestLMSSerialization(const char* name)
 	}
 }
 
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool TestLMSDualFormDecodeOne(const char* name,
+	const char* rawKeyHex, const char* legacySpkiHex)
+{
+	try {
+		typedef LMSPublicKey<LMS_PARAMS, OTS_PARAMS> PubKeyType;
+
+		std::string rawKey, legacySpki;
+		StringSource(rawKeyHex, true, new HexDecoder(new StringSink(rawKey)));
+		StringSource(legacySpkiHex, true, new HexDecoder(new StringSink(legacySpki)));
+
+		if (rawKey.size() != static_cast<size_t>(PubKeyType::PUBLIC_KEY_SIZE)) {
+			std::cout << "FAILED:  " << name << " fixture raw key size" << std::endl;
+			return false;
+		}
+
+		// Legacy form: raw lms_public_key in the BIT STRING
+		PubKeyType legacyKey;
+		StringSource legacySource(legacySpki, true);
+		legacyKey.BERDecode(legacySource);
+
+		if (!VerifyBufsEqual(legacyKey.GetPublicKeyBytePtr(),
+			reinterpret_cast<const byte*>(rawKey.data()),
+			PubKeyType::PUBLIC_KEY_SIZE)) {
+			std::cout << "FAILED:  " << name << " legacy SPKI decode mismatch" << std::endl;
+			return false;
+		}
+
+		// RFC 9802 HSS L=1 form: u32str(1) || lms_public_key. Built here
+		// because the encoder still emits the legacy form. The fixed DER
+		// header assumes the 56-byte M32 raw key.
+		std::string rfcSpki;
+		StringSource("304E300D060B2A864886F70D0109100311033D0000000001", true,
+			new HexDecoder(new StringSink(rfcSpki)));
+		rfcSpki += rawKey;
+
+		PubKeyType rfcKey;
+		StringSource rfcSource(rfcSpki, true);
+		rfcKey.BERDecode(rfcSource);
+
+		if (!VerifyBufsEqual(rfcKey.GetPublicKeyBytePtr(),
+			reinterpret_cast<const byte*>(rawKey.data()),
+			PubKeyType::PUBLIC_KEY_SIZE)) {
+			std::cout << "FAILED:  " << name << " RFC 9802 SPKI decode mismatch" << std::endl;
+			return false;
+		}
+
+		std::cout << "passed:  " << name << " dual-form SPKI decode" << std::endl;
+		return true;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " dual-form SPKI decode - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+static bool TestLMSDualFormDecode()
+{
+	// Fixed keys use seed 00..1F and identifier 20..2F. The legacy DER was
+	// captured before the RFC 9802 encoder change.
+	bool pass = true;
+
+	pass = TestLMSDualFormDecodeOne<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8",
+		"0000000500000004202122232425262728292A2B2C2D2E2F"
+		"D424FB3CC1F2DB618CBB3254A2812F2005F8929F49B78FBFDD7E6B68641CCEEB",
+		"304A300D060B2A864886F70D0109100311033900"
+		"0000000500000004202122232425262728292A2B2C2D2E2F"
+		"D424FB3CC1F2DB618CBB3254A2812F2005F8929F49B78FBFDD7E6B68641CCEEB") && pass;
+
+	pass = TestLMSDualFormDecodeOne<LMS_SHA256_M32_H10, LMOTS_SHA256_N32_W8>(
+		"LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8",
+		"0000000600000004202122232425262728292A2B2C2D2E2F"
+		"87E7BA11006DF29E44F8D303B2EB3A9EB2A9CDC96ACE306AC6DE8F12210E0A8F",
+		"304A300D060B2A864886F70D0109100311033900"
+		"0000000600000004202122232425262728292A2B2C2D2E2F"
+		"87E7BA11006DF29E44F8D303B2EB3A9EB2A9CDC96ACE306AC6DE8F12210E0A8F") && pass;
+
+	return pass;
+}
+
 // ******************** NIST ACVP Known-Answer Tests ************************* //
 
 static bool HexDecode(const char *hexStr, byte *out, size_t outLen)
@@ -1459,6 +1540,9 @@ bool ValidateLMS()
 		"LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSSerialization<LMS_SHA256_M32_H10, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8") && pass;
+
+	// SPKI decode fixtures, legacy and RFC 9802 forms
+	pass = TestLMSDualFormDecode() && pass;
 
 	// SHA-256/N32 LM-OTS family at H5: W1, W2, W4
 	pass = TestLMSSignVerify<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W1>(
