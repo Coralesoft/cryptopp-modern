@@ -826,8 +826,9 @@ static bool TestLMSMalformedSpki(const char* name)
 		SecByteBlock seeded(pubKey.GetPublicKeyBytePtr(), PubKeyType::PUBLIC_KEY_SIZE);
 		seeded[seeded.size() - 1] ^= 0xFF;
 
+		std::string controlSpki = BuildLMSSpki(algId, 0, rfcPayload);
 		PubKeyType control;
-		StringSource controlSource(BuildLMSSpki(algId, 0, rfcPayload), true);
+		StringSource controlSource(controlSpki, true);
 		control.BERDecode(controlSource);
 		if (!VerifyBufsEqual(control.GetPublicKeyBytePtr(),
 			reinterpret_cast<const byte*>(rawKey.data()),
