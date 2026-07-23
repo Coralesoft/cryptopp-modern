@@ -527,7 +527,7 @@ void LMSPublicKey<LMS_PARAMS, OTS_PARAMS>::DEREncode(BufferedTransformation &bt)
 template <class LMS_PARAMS, class OTS_PARAMS>
 void LMSPublicKey<LMS_PARAMS, OTS_PARAMS>::BERDecode(BufferedTransformation &bt)
 {
-    // X.509 SubjectPublicKeyInfo format (RFC 8708)
+    // X.509 SubjectPublicKeyInfo format (RFC 9802)
     BERSequenceDecoder publicKeyInfo(bt);
         BERSequenceDecoder algorithm(publicKeyInfo);
             OID oid(algorithm);
@@ -538,11 +538,28 @@ void LMSPublicKey<LMS_PARAMS, OTS_PARAMS>::BERDecode(BufferedTransformation &bt)
         SecByteBlock subjectPublicKey;
         unsigned int unusedBits;
         BERDecodeBitString(publicKeyInfo, subjectPublicKey, unusedBits);
-        if (unusedBits != 0 || subjectPublicKey.size() != PUBLIC_KEY_SIZE)
+        if (unusedBits != 0)
             BERDecodeError();
-        SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEY_SIZE);
+
+        SecByteBlock decodedKey(PUBLIC_KEY_SIZE);
+        if (subjectPublicKey.size() == PUBLIC_KEY_SIZE + 4)
+        {
+            // RFC 9802 HSS L=1 form: u32str(1) || lms_public_key
+            if (LMS_Internal::LoadBE32(subjectPublicKey) != 1)
+                BERDecodeError();
+            std::memcpy(decodedKey, subjectPublicKey + 4, PUBLIC_KEY_SIZE);
+        }
+        else if (subjectPublicKey.size() == PUBLIC_KEY_SIZE)
+        {
+            // Legacy form (2026.6.0 through 2026.8.x): raw lms_public_key
+            std::memcpy(decodedKey, subjectPublicKey.begin(), PUBLIC_KEY_SIZE);
+        }
+        else
+            BERDecodeError();
 
     publicKeyInfo.MessageEnd();
+
+    SetPublicKey(decodedKey.begin(), PUBLIC_KEY_SIZE);
 }
 
 // ******************** LMSPrivateKey ************************* //
