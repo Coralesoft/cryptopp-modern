@@ -512,15 +512,26 @@ void LMSPublicKey<LMS_PARAMS, OTS_PARAMS>::AssignFrom(const NameValuePairs &sour
 template <class LMS_PARAMS, class OTS_PARAMS>
 void LMSPublicKey<LMS_PARAMS, OTS_PARAMS>::DEREncode(BufferedTransformation &bt) const
 {
-    // X.509 SubjectPublicKeyInfo format (RFC 8708)
+    // Guard before the outer SEQUENCE so an invalid key writes nothing.
+    // The typecode comparison catches default-constructed keys, whose
+    // m_pk is zero-filled at full size.
+    if (m_pk.size() != PUBLIC_KEY_SIZE ||
+        LMS_Internal::LoadBE32(m_pk) != LMS_PARAMS::TYPE_ID ||
+        LMS_Internal::LoadBE32(m_pk + 4) != OTS_PARAMS::TYPE_ID)
+        throw InvalidArgument("LMSPublicKey: invalid public key");
+
+    // X.509 SubjectPublicKeyInfo format (RFC 9802)
     // AlgorithmIdentifier parameters MUST be absent (not NULL)
     DERSequenceEncoder publicKeyInfo(bt);
         DERSequenceEncoder algorithm(publicKeyInfo);
             GetAlgorithmID().DEREncode(algorithm);
         algorithm.MessageEnd();
 
-        // Public key bytes go directly in BIT STRING, no wrapping
-        DEREncodeBitString(publicKeyInfo, m_pk.begin(), PUBLIC_KEY_SIZE);
+        // RFC 9802 HSS L=1 form: u32str(1) || lms_public_key
+        SecByteBlock encodedKey(4 + PUBLIC_KEY_SIZE);
+        LMS_Internal::u32str(encodedKey.begin(), 1);
+        std::memcpy(encodedKey.begin() + 4, m_pk.begin(), PUBLIC_KEY_SIZE);
+        DEREncodeBitString(publicKeyInfo, encodedKey.begin(), encodedKey.size());
     publicKeyInfo.MessageEnd();
 }
 
