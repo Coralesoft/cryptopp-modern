@@ -1062,6 +1062,78 @@ static bool TestLMSSpkiEncode()
 	return pass;
 }
 
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool ExpectLMSEncodeReject(const char* name, const char* label,
+	const LMSPublicKey<LMS_PARAMS, OTS_PARAMS>& key)
+{
+	std::string encoded;
+	StringSink sink(encoded);
+	bool rejected = false;
+	try {
+		key.DEREncode(sink);
+	}
+	catch (const InvalidArgument&) {
+		rejected = true;
+	}
+	if (!rejected) {
+		std::cout << "FAILED:  " << name << " " << label << " encoded" << std::endl;
+		return false;
+	}
+	if (!encoded.empty()) {
+		std::cout << "FAILED:  " << name << " " << label << " wrote output" << std::endl;
+		return false;
+	}
+	return true;
+}
+
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool TestLMSSpkiEncodeInvalid(const char* name)
+{
+	AutoSeededRandomPool rng;
+
+	try {
+		typedef LMSPublicKey<LMS_PARAMS, OTS_PARAMS> PubKeyType;
+
+		// A default key is full-sized but zero-filled, so this exercises
+		// the embedded typecode checks rather than the size check.
+		PubKeyType defaulted;
+		bool pass = ExpectLMSEncodeReject(name, "default-constructed", defaulted);
+
+		LMSPrivateKey<LMS_PARAMS, OTS_PARAMS> privKey;
+		privKey.GenerateRandom(rng, g_nullNameValuePairs);
+		PubKeyType pubKey;
+		privKey.MakePublicKey(pubKey);
+
+		SecByteBlock tampered(pubKey.GetPublicKeyBytePtr(), PubKeyType::PUBLIC_KEY_SIZE);
+		tampered[3] ^= 0x01;
+		PubKeyType badLms;
+		badLms.SetPublicKey(tampered, tampered.size());
+		pass = ExpectLMSEncodeReject(name, "mismatched LMS typecode", badLms) && pass;
+
+		tampered.Assign(pubKey.GetPublicKeyBytePtr(), PubKeyType::PUBLIC_KEY_SIZE);
+		tampered[7] ^= 0x01;
+		PubKeyType badOts;
+		badOts.SetPublicKey(tampered, tampered.size());
+		pass = ExpectLMSEncodeReject(name, "mismatched LM-OTS typecode", badOts) && pass;
+
+		std::string control;
+		StringSink controlSink(control);
+		pubKey.DEREncode(controlSink);
+		if (control.empty()) {
+			std::cout << "FAILED:  " << name << " valid control encode" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " invalid-key encode rejection (3 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " invalid-key encode - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // ******************** NIST ACVP Known-Answer Tests ************************* //
 
 static bool HexDecode(const char *hexStr, byte *out, size_t outLen)
@@ -1877,6 +1949,8 @@ bool ValidateLMS()
 	pass = TestLMSSpkiDecodeState<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSSpkiEncode() && pass;
+	pass = TestLMSSpkiEncodeInvalid<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 
 	// SHA-256/N32 LM-OTS family at H5: W1, W2, W4
 	pass = TestLMSSignVerify<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W1>(
