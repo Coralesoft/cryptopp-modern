@@ -950,6 +950,118 @@ static bool TestLMSSpkiDecodeState(const char* name)
 	}
 }
 
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool TestLMSSpkiEncodeOne(const char* name, const char* rawKeyHex)
+{
+	try {
+		typedef LMSPublicKey<LMS_PARAMS, OTS_PARAMS> PubKeyType;
+
+		std::string rawKey;
+		StringSource(rawKeyHex, true, new HexDecoder(new StringSink(rawKey)));
+		if (rawKey.size() != static_cast<size_t>(PubKeyType::PUBLIC_KEY_SIZE)) {
+			std::cout << "FAILED:  " << name << " fixture raw key size" << std::endl;
+			return false;
+		}
+
+		// Expected DER derived from the RFC 9802 layout, not captured from
+		// the encoder. The fixed header assumes the 56-byte M32 raw key.
+		std::string golden;
+		StringSource("304E300D060B2A864886F70D0109100311033D0000000001", true,
+			new HexDecoder(new StringSink(golden)));
+		golden += rawKey;
+
+		PubKeyType key;
+		key.SetPublicKey(reinterpret_cast<const byte*>(rawKey.data()), rawKey.size());
+
+		std::string encoded;
+		StringSink sink(encoded);
+		key.DEREncode(sink);
+
+		bool pass = true;
+		if (encoded != golden) {
+			std::cout << "FAILED:  " << name << " encoded SPKI differs from golden" << std::endl;
+			pass = false;
+		}
+
+		// Structural checks on the emitted DER, independent of the golden
+		StringSource parsed(encoded, true);
+		BERSequenceDecoder spki(parsed);
+			BERSequenceDecoder algorithm(spki);
+				OID oid(algorithm);
+				if (oid != ASN1::id_alg_hss_lms_hashsig()) {
+					std::cout << "FAILED:  " << name << " encoded OID" << std::endl;
+					pass = false;
+				}
+				if (!algorithm.EndReached()) {
+					std::cout << "FAILED:  " << name
+						<< " AlgorithmIdentifier parameters present" << std::endl;
+					return false;
+				}
+			algorithm.MessageEnd();
+
+			SecByteBlock payload;
+			unsigned int unusedBits;
+			BERDecodeBitString(spki, payload, unusedBits);
+		spki.MessageEnd();
+
+		if (unusedBits != 0) {
+			std::cout << "FAILED:  " << name << " nonzero unused bits" << std::endl;
+			pass = false;
+		}
+		if (payload.size() != static_cast<size_t>(PubKeyType::PUBLIC_KEY_SIZE) + 4) {
+			std::cout << "FAILED:  " << name << " payload size" << std::endl;
+			return false;
+		}
+		if (!VerifyBufsEqual(payload, reinterpret_cast<const byte*>("\x00\x00\x00\x01"), 4)) {
+			std::cout << "FAILED:  " << name << " leading word" << std::endl;
+			pass = false;
+		}
+		if (!VerifyBufsEqual(payload + 4, reinterpret_cast<const byte*>(rawKey.data()),
+			PubKeyType::PUBLIC_KEY_SIZE)) {
+			std::cout << "FAILED:  " << name << " payload key bytes" << std::endl;
+			pass = false;
+		}
+
+		// Round-trip through the dual-form decoder
+		PubKeyType decoded;
+		StringSource encodedSource(encoded, true);
+		decoded.BERDecode(encodedSource);
+		if (!VerifyBufsEqual(decoded.GetPublicKeyBytePtr(),
+			reinterpret_cast<const byte*>(rawKey.data()),
+			PubKeyType::PUBLIC_KEY_SIZE)) {
+			std::cout << "FAILED:  " << name << " RFC form round-trip" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " RFC 9802 SPKI encoding" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " SPKI encoding - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+static bool TestLMSSpkiEncode()
+{
+	// Same fixed keys as the dual-form decode fixtures: seed 00..1F,
+	// identifier 20..2F
+	bool pass = true;
+
+	pass = TestLMSSpkiEncodeOne<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8",
+		"0000000500000004202122232425262728292A2B2C2D2E2F"
+		"D424FB3CC1F2DB618CBB3254A2812F2005F8929F49B78FBFDD7E6B68641CCEEB") && pass;
+
+	pass = TestLMSSpkiEncodeOne<LMS_SHA256_M32_H10, LMOTS_SHA256_N32_W8>(
+		"LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8",
+		"0000000600000004202122232425262728292A2B2C2D2E2F"
+		"87E7BA11006DF29E44F8D303B2EB3A9EB2A9CDC96ACE306AC6DE8F12210E0A8F") && pass;
+
+	return pass;
+}
+
 // ******************** NIST ACVP Known-Answer Tests ************************* //
 
 static bool HexDecode(const char *hexStr, byte *out, size_t outLen)
@@ -1758,12 +1870,13 @@ bool ValidateLMS()
 	pass = TestLMSSerialization<LMS_SHA256_M32_H10, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8") && pass;
 
-	// SPKI decode fixtures, legacy and RFC 9802 forms
+	// SPKI encode and decode fixtures, legacy and RFC 9802 forms
 	pass = TestLMSDualFormDecode() && pass;
 	pass = TestLMSMalformedSpki<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSSpkiDecodeState<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestLMSSpkiEncode() && pass;
 
 	// SHA-256/N32 LM-OTS family at H5: W1, W2, W4
 	pass = TestLMSSignVerify<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W1>(
