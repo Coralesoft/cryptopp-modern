@@ -891,6 +891,65 @@ static bool TestLMSMalformedSpki(const char* name)
 	}
 }
 
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool TestLMSSpkiDecodeState(const char* name)
+{
+	AutoSeededRandomPool rng;
+
+	try {
+		typedef LMSPublicKey<LMS_PARAMS, OTS_PARAMS> PubKeyType;
+
+		LMSPrivateKey<LMS_PARAMS, OTS_PARAMS> privKey;
+		privKey.GenerateRandom(rng, g_nullNameValuePairs);
+		PubKeyType pubKey;
+		privKey.MakePublicKey(pubKey);
+
+		std::string rawKey(reinterpret_cast<const char*>(pubKey.GetPublicKeyBytePtr()),
+			PubKeyType::PUBLIC_KEY_SIZE);
+		std::string spki = BuildLMSSpki("300D060B2A864886F70D0109100311", 0,
+			std::string("\x00\x00\x00\x01", 4) + rawKey);
+
+		SecByteBlock seeded(pubKey.GetPublicKeyBytePtr(), PubKeyType::PUBLIC_KEY_SIZE);
+		seeded[seeded.size() - 1] ^= 0xFF;
+
+		// An extra element inside the outer SEQUENCE fails at the outer
+		// MessageEnd(), after the key bytes have been parsed.
+		std::string extraElement = spki;
+		extraElement[1] = static_cast<char>(static_cast<byte>(extraElement[1]) + 2);
+		extraElement += '\x05';
+		extraElement += '\x00';
+		bool pass = ExpectLMSSpkiReject<LMS_PARAMS, OTS_PARAMS>(name,
+			"extra element in SEQUENCE", extraElement, seeded);
+
+		// Bytes after the complete outer SEQUENCE are not part of the SPKI
+		// and stay in the source.
+		std::string withTrailing = spki + "TAIL";
+		PubKeyType key;
+		StringSource source(withTrailing, true);
+		key.BERDecode(source);
+		if (!VerifyBufsEqual(key.GetPublicKeyBytePtr(),
+			reinterpret_cast<const byte*>(rawKey.data()),
+			PubKeyType::PUBLIC_KEY_SIZE)) {
+			std::cout << "FAILED:  " << name << " decode ahead of trailing bytes" << std::endl;
+			pass = false;
+		}
+		byte tail[4];
+		if (source.MaxRetrievable() != 4 || source.Get(tail, 4) != 4 ||
+			!VerifyBufsEqual(tail, reinterpret_cast<const byte*>("TAIL"), 4)) {
+			std::cout << "FAILED:  " << name << " trailing bytes consumed" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " SPKI decode state (2 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " SPKI decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // ******************** NIST ACVP Known-Answer Tests ************************* //
 
 static bool HexDecode(const char *hexStr, byte *out, size_t outLen)
@@ -1702,6 +1761,8 @@ bool ValidateLMS()
 	// SPKI decode fixtures, legacy and RFC 9802 forms
 	pass = TestLMSDualFormDecode() && pass;
 	pass = TestLMSMalformedSpki<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestLMSSpkiDecodeState<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 
 	// SHA-256/N32 LM-OTS family at H5: W1, W2, W4
