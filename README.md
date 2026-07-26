@@ -2,7 +2,7 @@
 
 **A maintained, modernized fork of Crypto++ with new algorithms and security improvements**
 
-[![Version](https://img.shields.io/badge/version-2026.7.1-blue.svg)](https://github.com/cryptopp-modern/cryptopp-modern/releases)
+[![Version](https://img.shields.io/badge/version-2026.8.0-blue.svg)](https://github.com/cryptopp-modern/cryptopp-modern/releases)
 [![License](https://img.shields.io/badge/license-Boost-green.svg)](LICENSE)
 
 ---
@@ -24,19 +24,18 @@
 ---
 
 
-## What's New in 2026.7.1
+## What's New in 2026.8.0
 
-Packaging patch; no cryptographic code changed.
+- **Unix shared libraries** - CMake and GNUmakefile build `libcryptopp.so`/`.dylib`; the SONAME starts an independent ABI series at `libcryptopp.so.9` (#48).
+- **Mixed-parameter HSS** - Per-level LMS/LM-OTS parameters, `HSS_SHA256_H10W4_H5W8_L2`, LM-OTS W1/W2/W4 (#56). Source break for direct `HSS_Params` users; named typedefs and wire formats unchanged.
+- **ChaCha SIMD fix** - Counter carry in the NEON, SSE2, and Altivec backends (weidai11/cryptopp#1362).
+- **Input validation** - BLAKE3 public inputs checked at runtime (#57), zero-length AEAD tags rejected (#58), zero PBKDF iterations rejected (#59).
 
-- CMake and pkg-config files install under `${CMAKE_INSTALL_LIBDIR}` (#47).
-- `libcryptopp.pc` restored, with a `cryptopp-modern.pc` alias (#51).
-- `.tar.gz` releases and normalised line endings (#49).
-- Release-signing key and verification steps published (#46).
+### Previously in 2026.7.x
 
-### Previously in 2026.7.0
-
-- **SLH-DSA external interface** - FIPS 205 external pure signatures, interoperable with OpenSSL, X.509, and CMS. SLH-DSA signatures from 2026.3.0 through 2026.6.0 use the internal message form and are not interoperable with the external-interface format introduced in 2026.7.0.
-- **Stateful-signing hardening** - Additional one-time-key safety checks for LMS/HSS.
+- **2026.7.1 packaging** - CMake/pkg-config install locations (#47), `libcryptopp.pc` alias (#51), `.tar.gz` releases (#49), and the release-signing key (#46).
+- **2026.7.0 SLH-DSA interface** - Added FIPS 205 external pure signatures. SLH-DSA signatures from 2026.3.0 through 2026.6.0 use the internal message form and are not interoperable with the external-interface format introduced in 2026.7.0.
+- **Stateful-signing hardening** - Added one-time-key safety checks for LMS/HSS.
 
 ---
 

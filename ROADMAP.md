@@ -1,6 +1,6 @@
 # cryptopp-modern Development Roadmap
 
-**Current Version:** 2026.7.1
+**Current Version:** 2026.8.0
 
 ---
 
@@ -163,6 +163,7 @@ acceptable.
 - ✅ **LMS / HSS** - Leighton-Micali Signatures and Hierarchical Signature
   System per RFC 8554 / SP 800-208 (shipped 2026.6.0)
 - ✅ **Signer state store** - File-backed durable state for one-time-key safety (shipped 2026.6.0)
+- ✅ **Mixed-parameter HSS** - Per-level LMS/LM-OTS parameters (shipped 2026.8.0)
 
 ---
 
@@ -182,6 +183,13 @@ See [FORK.md](FORK.md) for project details and direction.
 ---
 
 ## Version History
+
+### 2026.8.0 (August 2026) - Shared Libraries, Mixed-Parameter HSS, and Hardening
+- **Unix shared libraries** - `libcryptopp.so`/`.dylib` builds; independent ABI series starting at `libcryptopp.so.9` (#48)
+- **Mixed-parameter HSS** - Per-level LMS/LM-OTS parameters, `HSS_SHA256_H10W4_H5W8_L2`, LM-OTS W1/W2/W4 (#56)
+- **ChaCha SIMD fix** - Counter carry in the NEON, SSE2, and Altivec backends (weidai11/cryptopp#1362)
+- **Input validation** - BLAKE3 runtime checks (#57), zero-length AEAD tags rejected (#58), zero PBKDF iterations rejected (#59)
+- **Build and CI** - MSVC MASM object-path fix and Windows ARM64 CI (#43)
 
 ### 2026.7.1 (July 2026) - Packaging
 - **Install locations** - CMake and pkg-config files install under `${CMAKE_INSTALL_LIBDIR}` (#47)

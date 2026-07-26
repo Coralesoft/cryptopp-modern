@@ -1,5 +1,5 @@
 cryptopp-modern: Maintained Fork of the Crypto++ Library
-Version 2026.7.1 - July 2026
+Version 2026.8.0 - August 2026
 
 cryptopp-modern is an actively maintained fork of the Crypto++ library,
 a free C++ class library of cryptographic schemes. The library contains
@@ -308,6 +308,32 @@ documentation is one of the highest returns on investment.
 
 The items in this section comprise the most recent history. Please see History.txt
 for the record back to Crypto++ 1.0.
+
+2026.8.0 - August 2026
+      - minor release (Unix shared libraries, mixed-parameter HSS, ChaCha SIMD fix)
+      - fixed ChaCha counter carry in the NEON, SSE2, and Altivec backends
+        * keystream was wrong when the 32-bit block counter overflowed inside
+          a multi-block request
+        * fixes upstream issue 1362; also merged upstream (PR 1363)
+      - added Unix shared-library builds (issue 48)
+        * CMake and GNUmakefile support shared-library builds on Unix-like
+          platforms
+        * SONAME starts an independent ABI series at libcryptopp.so.9
+      - added mixed-parameter HSS (PR 56)
+        * per-level LMS and LM-OTS parameters in HSS_Params
+        * new HSS_SHA256_H10W4_H5W8_L2 typedef; LM-OTS W1, W2, W4 parameter sets
+        * verified against RFC 8554 Appendix F Test Case 2
+        * source break for direct HSS_Params users; named typedefs, wire
+          formats, key encodings, and state files unchanged
+      - validated BLAKE3 public inputs at runtime (PR 57)
+        * invalid keys, output lengths, and KDF contexts now throw
+        * keyed-mode MIN_KEYLENGTH is 32
+        * AlgorithmProvider no longer reports NEON on ARM
+      - rejected zero-length AEAD authentication tags (PR 58, upstream issue 1364)
+      - rejected zero PBKDF iterations without a positive time budget (PR 59,
+        upstream issue 1366)
+      - fixed MSVC MASM object paths under CMake; added Windows ARM64 CI (issue 43)
+      - fixed variable collisions in setenv-ios.sh
 
 2026.7.1 - July 2026
       - packaging patch (no cryptographic code changes)
