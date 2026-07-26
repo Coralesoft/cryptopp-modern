@@ -26,6 +26,14 @@
 
 ### cryptopp-modern Releases
 
+**2026.8.0** (August 2026) - Shared Libraries, Mixed-Parameter HSS, and Hardening (Minor)
+- Fixed ChaCha counter carry in the NEON, SSE2, and Altivec backends; the keystream was wrong when the 32-bit block counter overflowed inside a multi-block request (weidai11/cryptopp#1362)
+- Added Unix shared-library builds; the SONAME starts an independent ABI series at `libcryptopp.so.9` (#48)
+- Added mixed-parameter HSS with per-level LMS/LM-OTS parameters: `HSS_SHA256_H10W4_H5W8_L2`, LM-OTS W1/W2/W4, RFC 8554 Appendix F Test Case 2 interop (#56); source break for direct `HSS_Params` users, named typedefs and wire formats unchanged
+- Validated BLAKE3 public inputs at runtime; keyed-mode `MIN_KEYLENGTH` is now 32; `AlgorithmProvider` no longer reports NEON on ARM (#57)
+- Rejected zero-length AEAD authentication tags (#58) and zero PBKDF iterations without a positive time budget (#59)
+- Fixed MSVC MASM object paths under CMake and added Windows ARM64 CI coverage (#43)
+
 **2026.7.1** (July 2026) - Packaging (Patch)
 - Moved the CMake package config and pkg-config files under `${CMAKE_INSTALL_LIBDIR}` (#47)
 - Restored `libcryptopp.pc` for pkg-config compatibility; kept `cryptopp-modern.pc` as a version-pinned alias (#51)
@@ -169,10 +177,10 @@ This is a maintained fork to:
 
 ### cryptopp-modern vs. Upstream Crypto++
 
-| Aspect | Crypto++ 8.9.0 | cryptopp-modern 2026.7.1 |
+| Aspect | Crypto++ 8.9.0 | cryptopp-modern 2026.8.0 |
 |--------|----------------|---------------------------|
-| **Last Release** | October 1, 2023 | July 2026 |
-| **Versioning** | Semantic (8.9.0) | Calendar (2026.7.1) |
+| **Last Release** | October 1, 2023 | August 2026 |
+| **Versioning** | Semantic (8.9.0) | Calendar (2026.8.0) |
 | **BLAKE3** | ❌ | ✅ with AVX-512 (over 4000 MiB/s) |
 | **Argon2** | ❌ | ✅ RFC 9106 |
 | **XAES-256-GCM** | ❌ | ✅ C2SP spec |
@@ -207,6 +215,6 @@ This is a maintained fork to:
 
 ---
 
-**Last Updated:** 2026-07-12
+**Last Updated:** 2026-08-01
 **Fork Point:** Crypto++ 8.9.0 (commit 60f81a77)
-**Current Version:** 2026.7.1
+**Current Version:** 2026.8.0
