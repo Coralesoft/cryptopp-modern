@@ -1134,6 +1134,68 @@ static bool TestLMSSpkiEncodeInvalid(const char* name)
 	}
 }
 
+template <class HSS_PARAMS>
+static bool TestLMSHSSL1SpkiEquivalence(const char* name)
+{
+	try {
+		typedef typename HSS_PARAMS::template LMSParamsAt<0> LMSParams;
+		typedef typename HSS_PARAMS::template OTSParamsAt<0> OTSParams;
+		typedef LMSPublicKey<LMSParams, OTSParams> LMSPubKeyType;
+
+		// Same fixed material as the other SPKI fixtures: seed 00..1F,
+		// identifier 20..2F
+		byte seed[32], ident[16];
+		for (unsigned int i = 0; i < 32; i++)
+			seed[i] = static_cast<byte>(i);
+		for (unsigned int i = 0; i < 16; i++)
+			ident[i] = static_cast<byte>(0x20 + i);
+
+		LMSPrivateKey<LMSParams, OTSParams> lmsPriv;
+		lmsPriv.SetPrivateKey(seed, sizeof(seed), ident, sizeof(ident));
+		LMSPubKeyType lmsPub;
+		lmsPriv.MakePublicKey(lmsPub);
+
+		HSSPrivateKey<HSS_PARAMS> hssPriv;
+		hssPriv.SetPrivateKey(seed, sizeof(seed), ident, sizeof(ident));
+		HSSPublicKey<HSS_PARAMS> hssPub;
+		hssPriv.MakePublicKey(hssPub);
+
+		bool pass = true;
+		if (!VerifyBufsEqual(lmsPub.GetPublicKeyBytePtr(), hssPub.GetRootLMSPublicKey(),
+			LMSPubKeyType::PUBLIC_KEY_SIZE)) {
+			std::cout << "FAILED:  " << name
+				<< " raw LMS key differs from HSS root" << std::endl;
+			pass = false;
+		}
+
+		std::string lmsSpki;
+		StringSink lmsSink(lmsSpki);
+		lmsPub.DEREncode(lmsSink);
+
+		std::string hssSpki;
+		StringSink hssSink(hssSpki);
+		hssPub.DEREncode(hssSink);
+
+		if (lmsSpki.empty()) {
+			std::cout << "FAILED:  " << name << " LMS SPKI encode wrote nothing" << std::endl;
+			pass = false;
+		}
+		if (lmsSpki != hssSpki) {
+			std::cout << "FAILED:  " << name
+				<< " LMS and HSS L=1 SPKIs differ" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " LMS and HSS L=1 SPKI equivalence" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " SPKI equivalence - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // ******************** NIST ACVP Known-Answer Tests ************************* //
 
 static bool HexDecode(const char *hexStr, byte *out, size_t outLen)
@@ -1951,6 +2013,10 @@ bool ValidateLMS()
 	pass = TestLMSSpkiEncode() && pass;
 	pass = TestLMSSpkiEncodeInvalid<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H5_W8_L1_Params>(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H10_W8_L1_Params>(
+		"LMS-SHA256-M32-H10/LMOTS-SHA256-N32-W8") && pass;
 
 	// SHA-256/N32 LM-OTS family at H5: W1, W2, W4
 	pass = TestLMSSignVerify<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W1>(
