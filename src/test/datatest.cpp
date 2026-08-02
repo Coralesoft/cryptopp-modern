@@ -49,6 +49,27 @@ typedef std::map<std::string, std::string> TestData;
 const TestData *s_currentTestData = NULLPTR;
 const std::string testDataFilename = "cryptest.dat";
 
+// Restores the diagnostic context after nested TestDataFile calls.
+struct CurrentTestDataScope
+{
+	explicit CurrentTestDataScope(const TestData &v)
+		: m_previous(s_currentTestData)
+	{
+		s_currentTestData = &v;
+	}
+
+	~CurrentTestDataScope()
+	{
+		s_currentTestData = m_previous;
+	}
+
+	CurrentTestDataScope(const CurrentTestDataScope&) = delete;
+	CurrentTestDataScope& operator=(const CurrentTestDataScope&) = delete;
+
+private:
+	const TestData* m_previous;
+};
+
 // Handles CR, LF, and CRLF properly. Early RFC's used '\r\0' on occasion.
 // For istream.fail() see https://stackoverflow.com/q/34395801/608639.
 bool Readline(std::istream& stream, std::string& line)
@@ -1322,7 +1343,7 @@ void TestDataFile(std::string filename, const NameValuePairs &overrideParameters
 		throw Exception(Exception::OTHER_ERROR, "Can not open file " + DataDir(filename) + " for reading");
 
 	TestData v;
-	s_currentTestData = &v;
+	CurrentTestDataScope currentTestData(v);
 	std::string name, value, lastAlgName;
 
 	while (file)
