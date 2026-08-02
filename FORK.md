@@ -215,6 +215,6 @@ This is a maintained fork to:
 
 ---
 
-**Last Updated:** 2026-08-01
+**Last Updated:** 2026-08-02
 **Fork Point:** Crypto++ 8.9.0 (commit 60f81a77)
 **Current Version:** 2026.8.0
