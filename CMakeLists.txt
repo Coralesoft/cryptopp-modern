@@ -1502,6 +1502,15 @@ if(CRYPTOPP_BUILD_TESTING)
     # Match GNUmakefile behavior: always use .exe suffix (even on Linux/macOS)
     set_target_properties(cryptest PROPERTIES SUFFIX ".exe")
 
+    # cryptest instantiates library templates, so its RTTI must remain visible
+    # when linking against the shared library under libc++ (GH #64).
+    if(CRYPTOPP_BUILD_SHARED AND NOT WIN32)
+        set_target_properties(cryptest PROPERTIES
+            CXX_VISIBILITY_PRESET default
+            VISIBILITY_INLINES_HIDDEN OFF
+        )
+    endif()
+
     # Copy TestData and TestVectors to build directory so tests can run from there
     add_custom_command(
         TARGET cryptest POST_BUILD
