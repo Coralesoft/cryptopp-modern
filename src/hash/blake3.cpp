@@ -438,12 +438,15 @@ void BLAKE3::Update(const byte *input, size_t length)
 #if (CRYPTOPP_AVX512F_AVAILABLE) && (CRYPTOPP_AVX512VL_AVAILABLE)
 		// Use AVX512 16-way parallel hashing when we have 16+ complete chunks
 		// This provides ~2x speedup over AVX2 8-way for large messages
+		// The final chunk must stay in the chunk state so finalization can
+		// rebuild the root from its input, so the wide path only takes chunks
+		// with at least one byte after them
 		if (HasAVX512F() && HasAVX512VL() &&
 		    m_state.m_chunk.m_buf_len == 0 &&
 		    m_state.m_chunk.m_blocks_compressed == 0 &&
-		    length >= 16 * CHUNKSIZE)
+		    length > 16 * CHUNKSIZE)
 		{
-			size_t num_chunks = length / CHUNKSIZE;
+			size_t num_chunks = (length - 1) / CHUNKSIZE;
 			byte cv_buffer[16 * 32];  // 16 CVs at a time
 
 			while (num_chunks >= 16) {
@@ -484,12 +487,13 @@ void BLAKE3::Update(const byte *input, size_t length)
 #if CRYPTOPP_AVX2_AVAILABLE
 		// Use AVX2 8-way parallel hashing when we have 8+ complete chunks
 		// This provides ~2x speedup over SSE4.1 4-way for large messages
+		// As above: the final chunk stays in the chunk state
 		if (HasAVX2() &&
 		    m_state.m_chunk.m_buf_len == 0 &&
 		    m_state.m_chunk.m_blocks_compressed == 0 &&
-		    length >= 8 * CHUNKSIZE)
+		    length > 8 * CHUNKSIZE)
 		{
-			size_t num_chunks = length / CHUNKSIZE;
+			size_t num_chunks = (length - 1) / CHUNKSIZE;
 			byte cv_buffer[8 * 32];  // 8 CVs at a time
 
 			while (num_chunks >= 8) {
@@ -530,13 +534,14 @@ void BLAKE3::Update(const byte *input, size_t length)
 #if CRYPTOPP_SSE41_AVAILABLE
 		// Use SSE4.1 parallel hashing when we have 4+ complete chunks
 		// This is the key optimization that provides 2-4x speedup
+		// As above: the final chunk stays in the chunk state
 		if (HasSSE41() &&
 		    m_state.m_chunk.m_buf_len == 0 &&
 		    m_state.m_chunk.m_blocks_compressed == 0 &&
-		    length >= 4 * CHUNKSIZE)
+		    length > 4 * CHUNKSIZE)
 		{
 			// Calculate how many complete chunks we can process
-			size_t num_chunks = length / CHUNKSIZE;
+			size_t num_chunks = (length - 1) / CHUNKSIZE;
 
 			// Allocate buffer for chunk CVs
 			// We process chunks in batches and add their CVs to the tree
@@ -607,43 +612,27 @@ void BLAKE3::TruncatedFinal(byte *hash, size_t size)
 		Output(m_state.m_chunk.m_cv.data(), m_state.m_chunk.m_buf.data(),
 		      m_state.m_chunk.m_buf_len, m_state.m_chunk.m_chunkCounter, flags, hash, size);
 	} else {
-		// Multi-chunk tree hashing - match reference implementation's roll-up merge
+		// Multi-chunk tree hashing - roll-up merge of the CV stack
 		// The output structure stores INPUTS for compression (input_cv + block),
 		// not the output CV
-		size_t chunk_len = m_state.m_chunk.m_blocks_compressed * BLOCKSIZE + m_state.m_chunk.m_buf_len;
+		// Update() always leaves data in the current chunk when the tree is
+		// non-empty, so the roll-up starts from the current chunk
+		CRYPTOPP_ASSERT(m_state.m_chunk.m_blocks_compressed * BLOCKSIZE +
+		               m_state.m_chunk.m_buf_len > 0);
 
 		word32 output_input_cv[8];  // Input CV for compression
 		byte output_block[BLOCKSIZE];
-		byte output_block_len;
-		word64 output_counter;
-		byte output_flags;
-		size_t num_cvs;
+		size_t num_cvs = m_state.m_cv_stack_len;
 
-		// Determine starting output structure
-		if (chunk_len > 0) {
-			// Current chunk has data - output structure represents this chunk
-			num_cvs = m_state.m_cv_stack_len;
-			std::memcpy(output_input_cv, m_state.m_chunk.m_cv.data(), 8 * sizeof(word32));
-			std::memcpy(output_block, m_state.m_chunk.m_buf.data(), m_state.m_chunk.m_buf_len);
-			output_block_len = m_state.m_chunk.m_buf_len;
-			output_counter = m_state.m_chunk.m_chunkCounter;
-			output_flags = m_state.m_chunk.m_flags | CHUNK_END;
-			if (m_state.m_chunk.m_blocks_compressed == 0) {
-				output_flags |= CHUNK_START;
-			}
-		} else {
-			// No data in current chunk - start with top two stack entries as parent
-			num_cvs = m_state.m_cv_stack_len - 2;
-			word32 left_cv[8], right_cv[8];
-			std::memcpy(left_cv, m_state.m_cv_stack.data() + num_cvs * 8, 8 * sizeof(word32));
-			std::memcpy(right_cv, m_state.m_cv_stack.data() + (num_cvs + 1) * 8, 8 * sizeof(word32));
-
-			store_cv_words(output_block, left_cv);
-			store_cv_words(output_block + 32, right_cv);
-			output_block_len = BLOCKSIZE;
-			output_counter = 0;
-			output_flags = m_state.m_flags | PARENT;
-			std::memcpy(output_input_cv, m_state.m_key.data(), 8 * sizeof(word32));
+		std::memcpy(output_input_cv, m_state.m_chunk.m_cv.data(), 8 * sizeof(word32));
+		// Partial final blocks must be zero padded before compression
+		std::memset(output_block, 0, sizeof(output_block));
+		std::memcpy(output_block, m_state.m_chunk.m_buf.data(), m_state.m_chunk.m_buf_len);
+		byte output_block_len = m_state.m_chunk.m_buf_len;
+		word64 output_counter = m_state.m_chunk.m_chunkCounter;
+		byte output_flags = m_state.m_chunk.m_flags | CHUNK_END;
+		if (m_state.m_chunk.m_blocks_compressed == 0) {
+			output_flags |= CHUNK_START;
 		}
 
 		// Roll-up merge: combine output CV with stack entries
@@ -666,7 +655,7 @@ void BLAKE3::TruncatedFinal(byte *hash, size_t size)
 
 			// Build parent block: [stack_cv | output_cv]
 			byte parent_block[BLOCKSIZE];
-			std::memcpy(parent_block, m_state.m_cv_stack.data() + num_cvs * 8, 8 * sizeof(word32));
+			store_cv_words(parent_block, m_state.m_cv_stack.data() + num_cvs * 8);
 			store_cv_words(parent_block + 32, output_cv);
 
 			// Update output structure to represent this parent
