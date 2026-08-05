@@ -26,6 +26,11 @@
 
 ### cryptopp-modern Releases
 
+**2026.8.1** (August 2026) - BLAKE3 Multi-Chunk Hashing Fixes (Patch)
+- Fixed three defects in BLAKE3 multi-chunk hashing: parent chaining values serialised in native byte order (wrong digests over 1024 bytes on big-endian targets), partial final blocks left unpadded (digests could depend on uninitialised stack contents on any architecture), and an out-of-bounds read in the SSE4.1, AVX2 and AVX512 paths for single-call `Update` lengths at power-of-two chunk counts (#65)
+- Rejected invalid DEFLATE HLIT values; a malformed stream could trigger an out-of-bounds write in the inflator (#67, weidai11/cryptopp#1368)
+- Fixed `cryptest` `dynamic_cast` failures against shared-library builds with hidden visibility, seen on FreeBSD with Clang and libc++ (#64)
+
 **2026.8.0** (August 2026) - Shared Libraries, Mixed-Parameter HSS, and Hardening (Minor)
 - Fixed ChaCha counter carry in the NEON, SSE2, and Altivec backends; the keystream was wrong when the 32-bit block counter overflowed inside a multi-block request (weidai11/cryptopp#1362)
 - Added Unix shared-library builds; the SONAME starts an independent ABI series at `libcryptopp.so.9` (#48)
@@ -177,10 +182,10 @@ This is a maintained fork to:
 
 ### cryptopp-modern vs. Upstream Crypto++
 
-| Aspect | Crypto++ 8.9.0 | cryptopp-modern 2026.8.0 |
+| Aspect | Crypto++ 8.9.0 | cryptopp-modern 2026.8.1 |
 |--------|----------------|---------------------------|
 | **Last Release** | October 1, 2023 | August 2026 |
-| **Versioning** | Semantic (8.9.0) | Calendar (2026.8.0) |
+| **Versioning** | Semantic (8.9.0) | Calendar (2026.8.1) |
 | **BLAKE3** | ❌ | ✅ with AVX-512 (over 4000 MiB/s) |
 | **Argon2** | ❌ | ✅ RFC 9106 |
 | **XAES-256-GCM** | ❌ | ✅ C2SP spec |
@@ -215,6 +220,6 @@ This is a maintained fork to:
 
 ---
 
-**Last Updated:** 2026-08-02
+**Last Updated:** 2026-08-05
 **Fork Point:** Crypto++ 8.9.0 (commit 60f81a77)
-**Current Version:** 2026.8.0
+**Current Version:** 2026.8.1

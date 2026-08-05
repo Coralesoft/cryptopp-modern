@@ -2,7 +2,7 @@
 
 **A maintained, modernized fork of Crypto++ with new algorithms and security improvements**
 
-[![Version](https://img.shields.io/badge/version-2026.8.0-blue.svg)](https://github.com/cryptopp-modern/cryptopp-modern/releases)
+[![Version](https://img.shields.io/badge/version-2026.8.1-blue.svg)](https://github.com/cryptopp-modern/cryptopp-modern/releases)
 [![License](https://img.shields.io/badge/license-Boost-green.svg)](LICENSE)
 
 ---
@@ -24,7 +24,13 @@
 ---
 
 
-## What's New in 2026.8.0
+## What's New in 2026.8.1
+
+- **BLAKE3 multi-chunk fixes** - Parent chaining-value byte order on big-endian targets, zero padding of partial final blocks, and an out-of-bounds read in the wide hashing paths (#65). Digests over 1024 bytes from earlier releases may be incorrect; see the release notes.
+- **DEFLATE HLIT rejection** - A malformed stream could trigger an out-of-bounds write in the inflator (#67, weidai11/cryptopp#1368).
+- **Shared-build cryptest fix** - `dynamic_cast` failures against hidden-visibility shared builds, seen on FreeBSD with Clang and libc++ (#64).
+
+### Previously in 2026.8.0
 
 - **Unix shared libraries** - CMake and GNUmakefile build `libcryptopp.so`/`.dylib`; the SONAME starts an independent ABI series at `libcryptopp.so.9` (#48).
 - **Mixed-parameter HSS** - Per-level LMS/LM-OTS parameters, `HSS_SHA256_H10W4_H5W8_L2`, LM-OTS W1/W2/W4 (#56). Source break for direct `HSS_Params` users; named typedefs and wire formats unchanged.
