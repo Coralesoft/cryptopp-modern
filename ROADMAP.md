@@ -1,6 +1,6 @@
 # cryptopp-modern Development Roadmap
 
-**Current Version:** 2026.8.0
+**Current Version:** 2026.8.1
 
 ---
 
@@ -183,6 +183,11 @@ See [FORK.md](FORK.md) for project details and direction.
 ---
 
 ## Version History
+
+### 2026.8.1 (August 2026) - BLAKE3 Multi-Chunk Hashing Fixes
+- **BLAKE3 multi-chunk** - Parent chaining-value byte order on big-endian targets, zero padding of partial final blocks, and an out-of-bounds read in the wide hashing paths (#65)
+- **DEFLATE HLIT** - Malformed streams could trigger an out-of-bounds write in the inflator (#67, weidai11/cryptopp#1368)
+- **Shared-build cryptest** - `dynamic_cast` failures under hidden visibility, seen on FreeBSD with Clang and libc++ (#64)
 
 ### 2026.8.0 (August 2026) - Shared Libraries, Mixed-Parameter HSS, and Hardening
 - **Unix shared libraries** - `libcryptopp.so`/`.dylib` builds; independent ABI series starting at `libcryptopp.so.9` (#48)

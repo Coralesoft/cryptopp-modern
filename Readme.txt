@@ -1,5 +1,5 @@
 cryptopp-modern: Maintained Fork of the Crypto++ Library
-Version 2026.8.0 - August 2026
+Version 2026.8.1 - August 2026
 
 cryptopp-modern is an actively maintained fork of the Crypto++ library,
 a free C++ class library of cryptographic schemes. The library contains
@@ -308,6 +308,26 @@ documentation is one of the highest returns on investment.
 
 The items in this section comprise the most recent history. Please see History.txt
 for the record back to Crypto++ 1.0.
+
+2026.8.1 - August 2026
+      - patch release (BLAKE3 multi-chunk hashing fixes)
+      - fixed three defects in BLAKE3 multi-chunk hashing (issue 65)
+        * parent chaining values were serialised in native byte order, so
+          digests over 1024 bytes were wrong on big-endian targets
+        * partial final blocks were not zero padded, so those digests could
+          depend on uninitialised stack contents on any architecture
+        * the SSE4.1, AVX2 and AVX512 paths could read outside the
+          chaining-value stack for single-call Update lengths of exactly
+          4096, 8192 and other power-of-two chunk counts
+      - rejected invalid DEFLATE HLIT values (PR 67, upstream issue 1368)
+        * a malformed stream could trigger an out-of-bounds write in the
+          inflator; also merged upstream (PR 1371)
+      - fixed cryptest dynamic_cast failures against shared-library builds
+        with hidden visibility (issue 64)
+        * seen on FreeBSD with Clang and libc++
+      - synced zinflate follow-ups from upstream (PR 70)
+        * debug assertion on the rejected HLIT range and a 320-entry
+          codeLengths buffer matching zlib; release behaviour unchanged
 
 2026.8.0 - August 2026
       - minor release (Unix shared libraries, mixed-parameter HSS, ChaCha SIMD fix)
