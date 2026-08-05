@@ -156,7 +156,7 @@ endif
 BUILD ?= relwithdebinfo
 
 # Base CPPFLAGS and CXXFLAGS used if the user did not specify them
-ifeq ($(filter -DDEBUG -DNDEBUG,$(CPPFLAGS)$(CXXFLAGS)),)
+ifeq ($(filter -DDEBUG -DCRYPTOPP_DEBUG -DNDEBUG,$(CPPFLAGS)$(CXXFLAGS)),)
   ifeq ($(BUILD),debug)
     CRYPTOPP_CPPFLAGS += -DDEBUG
   else
