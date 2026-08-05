@@ -2596,6 +2596,54 @@ bool ValidateBLAKE3()
 		std::cout << (fail ? "FAILED   " : "passed   ") << "TruncatedFinal rejects oversize output\n";
 	}
 
+	// Datatest pumps input in small increments, so it does not exercise
+	// the wide hashing paths
+	{
+		const std::string key = "whats the Elvish word for friend";
+		const struct {
+			size_t len;
+			const char *digest;
+		} tests[] = {
+			{4096,
+			 "\x01\x50\x94\x01\x3f\x57\xa5\x27\x7b\x59\xd8\x47\x5c\x05\x01\x04"
+			 "\x2c\x0b\x64\x2e\x53\x1b\x0a\x1c\x8f\x58\xd2\x16\x32\x29\xe9\x69"},
+			{8192,
+			 "\xaa\xe7\x92\x48\x4c\x8e\xfe\x4f\x19\xe2\xca\x7d\x37\x1d\x8c\x46"
+			 "\x7f\xfb\x10\x74\x8d\x8a\x5a\x1a\xe5\x79\x94\x8f\x71\x8a\x2a\x63"},
+			{16384,
+			 "\xf8\x75\xd6\x64\x6d\xe2\x89\x85\x64\x6f\x34\xee\x13\xbe\x9a\x57"
+			 "\x6f\xd5\x15\xf7\x6b\x5b\x0a\x26\xbb\x32\x47\x35\x04\x1d\xdd\xe4"},
+			{31744,
+			 "\x62\xb6\x96\x0e\x1a\x44\xbc\xc1\xeb\x1a\x61\x1a\x8d\x62\x35\xb6"
+			 "\xb4\xb7\x8f\x32\xe7\xab\xc4\xfb\x4c\x6c\xdc\xce\x94\x89\x5c\x47"}
+		};
+		const char keyedDigest4096[] =
+			"\xbe\xfc\x66\x0a\xea\x2f\x17\x18\x88\x4c\xd8\xde\xb9\x90\x28\x11"
+			"\xd3\x32\xf4\xfc\x4a\x38\xcf\x7c\x73\x00\xd5\x97\xa0\x81\xbf\xc0";
+
+		SecByteBlock msg(31744);
+		for (size_t i = 0; i < msg.size(); i++)
+			msg[i] = static_cast<byte>(i % 251);
+
+		byte digest[32];
+		fail = false;
+		for (size_t i = 0; i < COUNTOF(tests); i++)
+		{
+			BLAKE3 hash;
+			hash.Update(msg, tests[i].len);
+			hash.TruncatedFinal(digest, sizeof(digest));
+			fail = fail || std::memcmp(digest, tests[i].digest, sizeof(digest)) != 0;
+		}
+
+		BLAKE3 mac(ConstBytePtr(key), BytePtrSize(key));
+		mac.Update(msg, 4096);
+		mac.TruncatedFinal(digest, sizeof(digest));
+		fail = fail || std::memcmp(digest, keyedDigest4096, sizeof(digest)) != 0;
+
+		pass = !fail && pass;
+		std::cout << (fail ? "FAILED   " : "passed   ") << "Single-shot whole-chunk inputs\n";
+	}
+
 	// Use test vectors file for comprehensive testing
 	pass = RunTestDataFile("TestVectors/blake3.txt") && pass;
 
