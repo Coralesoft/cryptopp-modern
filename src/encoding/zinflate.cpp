@@ -398,13 +398,14 @@ void Inflator::DecodeHeader()
 		{
 		if (!m_reader.FillBuffer(5+5+4))
 			throw UnexpectedEndErr();
-		unsigned int hlit = m_reader.GetBits(5);
-		unsigned int hdist = m_reader.GetBits(5);
-		unsigned int hclen = m_reader.GetBits(4);
+		const unsigned int hlit = m_reader.GetBits(5);
+		const unsigned int hdist = m_reader.GetBits(5);
+		const unsigned int hclen = m_reader.GetBits(4);
 		unsigned int i = 0;
 
 		// RFC 1951 allows HLIT values 0 to 29, encoding 257 to 286 literal/length
 		// codes. Values 30 and 31 are invalid and can overrun codeLengths below.
+		CRYPTOPP_ASSERT(hlit <= 29);
 		if (hlit > 29)
 			throw BadBlockErr();
 
@@ -412,7 +413,8 @@ void Inflator::DecodeHeader()
 		const unsigned int distanceCount = hdist + 1;
 		const unsigned int codeLengthCount = literalCount + distanceCount;
 
-		FixedSizeSecBlock<unsigned int, 286+32> codeLengths;
+		// 320 follows zlib allocation; see GH #1368
+		FixedSizeSecBlock<unsigned int, 286+32+2> codeLengths;
 		CRYPTOPP_ASSERT(codeLengthCount <= codeLengths.size());
 		static const unsigned int border[] = {    // Order of the bit length code lengths
 			16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
