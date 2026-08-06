@@ -363,7 +363,7 @@ public:
     virtual ~HSSPublicKey() = default;
 
     /// \brief Get the algorithm OID
-    /// \details Same OID as LMS (RFC 8554, RFC 8708).
+    /// \details Same OID as LMS (RFC 8554, RFC 9708).
     OID GetAlgorithmID() const { return ASN1::id_alg_hss_lms_hashsig(); }
 
     /// \brief Validate public key structure
@@ -384,7 +384,7 @@ public:
     /// \brief Get pointer to the root LMS public key (offset 4)
     const byte* GetRootLMSPublicKey() const { return m_pk.begin() + 4; }
 
-    /// \brief DER encode (X.509 SubjectPublicKeyInfo, RFC 8708)
+    /// \brief DER encode (X.509 SubjectPublicKeyInfo, RFC 9802)
     void DEREncode(BufferedTransformation &bt) const;
     void BERDecode(BufferedTransformation &bt);
     void Save(BufferedTransformation &bt) const override { DEREncode(bt); }
@@ -616,14 +616,28 @@ struct HSS
 /// \name HSS Scheme Typedefs
 //@{
 
-/// 1-level HSS with H5/W8: 32 signatures
+/// Parameters for 1-level HSS with H5/W8
 typedef HSS_Params<
     HSSLevel<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> > HSS_SHA256_H5_W8_L1_Params;
+
+/// 1-level HSS with H5/W8: 32 signatures
+/// \details The RFC 9802 standards-facing form of a single LMS tree. For a
+///  given seed and identifier it uses the same tree as LMS_SHA256_H5_W8,
+///  with RFC 8554 HSS L=1 key and signature framing. Do not reuse an
+///  existing LMS private key with a new HSS L=1 state store. Continue the
+///  original signing state or generate a new key.
 typedef HSS<HSS_SHA256_H5_W8_L1_Params> HSS_SHA256_H5_W8_L1;
 
-/// 1-level HSS with H10/W8: 1,024 signatures
+/// Parameters for 1-level HSS with H10/W8
 typedef HSS_Params<
     HSSLevel<LMS_SHA256_M32_H10, LMOTS_SHA256_N32_W8> > HSS_SHA256_H10_W8_L1_Params;
+
+/// 1-level HSS with H10/W8: 1,024 signatures
+/// \details The RFC 9802 standards-facing form of a single LMS tree. For a
+///  given seed and identifier it uses the same tree as LMS_SHA256_H10_W8,
+///  with RFC 8554 HSS L=1 key and signature framing. Do not reuse an
+///  existing LMS private key with a new HSS L=1 state store. Continue the
+///  original signing state or generate a new key.
 typedef HSS<HSS_SHA256_H10_W8_L1_Params> HSS_SHA256_H10_W8_L1;
 
 /// 2-level HSS with H5/W8: 1,024 signatures

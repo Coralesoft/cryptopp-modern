@@ -226,7 +226,7 @@ struct LMSPublicKey : public PublicKey
     virtual ~LMSPublicKey() = default;
 
     /// \brief Get the algorithm OID
-    /// \details All LMS parameter sets share a single OID (RFC 8554, RFC 8708).
+    /// \details All LMS parameter sets share a single OID (RFC 8554, RFC 9708).
     OID GetAlgorithmID() const { return ASN1::id_alg_hss_lms_hashsig(); }
 
     /// \brief Check this object for errors
@@ -257,13 +257,18 @@ struct LMSPublicKey : public PublicKey
 
     /// \brief DER encode the public key (X.509 SubjectPublicKeyInfo format)
     /// \param bt BufferedTransformation to write to
-    /// \details Per RFC 8708, the public key bytes are placed directly in
-    ///  the BIT STRING with no additional ASN.1 wrapping. Algorithm
-    ///  parameters MUST be absent (not NULL).
+    /// \details Per RFC 9802, the BIT STRING carries the HSS L=1 form,
+    ///  u32str(1) followed by the raw LMS public key, with no additional
+    ///  ASN.1 wrapping. Algorithm parameters MUST be absent (not NULL).
+    ///  An unset or inconsistent key throws InvalidArgument before any
+    ///  output is written.
     void DEREncode(BufferedTransformation &bt) const;
 
     /// \brief BER decode the public key (X.509 SubjectPublicKeyInfo format)
     /// \param bt BufferedTransformation to read from
+    /// \details Accepts the RFC 9802 HSS L=1 form and the legacy raw-key
+    ///  form emitted by earlier releases. The stored key is updated only
+    ///  if the complete SPKI parses.
     void BERDecode(BufferedTransformation &bt);
 
     /// \brief Save the key to a BufferedTransformation

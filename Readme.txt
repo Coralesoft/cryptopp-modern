@@ -398,7 +398,7 @@ for the record back to Crypto++ 1.0.
         * fail-closed poisoning on integrity failure
         * Win32 / POSIX / macOS F_FULLFSYNC flush handling
       - added ASN.1 wiring for LMS public keys
-        * X.509 SubjectPublicKeyInfo with RFC 8708 id-alg-hss-lms-hashsig
+        * RFC 9802 X.509 SubjectPublicKeyInfo with RFC 9708 id-alg-hss-lms-hashsig
         * library-local PKCS#8 wrapper carrying SEED || I
       - added Save/Load round-trip tests for ML-KEM, ML-DSA, SLH-DSA
       - added Android x86_64 and x86 build coverage in CI

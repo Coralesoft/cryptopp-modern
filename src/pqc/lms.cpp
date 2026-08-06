@@ -1150,7 +1150,7 @@ void HSSPublicKey<HSS_PARAMS>::AssignFrom(const NameValuePairs &source)
 template <class HSS_PARAMS>
 void HSSPublicKey<HSS_PARAMS>::DEREncode(BufferedTransformation &bt) const
 {
-    // X.509 SubjectPublicKeyInfo (RFC 8708)
+    // X.509 SubjectPublicKeyInfo (RFC 9802)
     // AlgorithmIdentifier parameters MUST be absent (not NULL)
     DERSequenceEncoder publicKeyInfo(bt);
         DERSequenceEncoder algorithm(publicKeyInfo);
@@ -1164,7 +1164,7 @@ void HSSPublicKey<HSS_PARAMS>::DEREncode(BufferedTransformation &bt) const
 template <class HSS_PARAMS>
 void HSSPublicKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
 {
-    // X.509 SubjectPublicKeyInfo (RFC 8708)
+    // X.509 SubjectPublicKeyInfo (RFC 9802)
     BERSequenceDecoder publicKeyInfo(bt);
         BERSequenceDecoder algorithm(publicKeyInfo);
             OID oid(algorithm);

@@ -59,7 +59,7 @@
 - Added HSS hierarchical signatures (`HSS_SHA256_H5_W8_L2`, `HSS_SHA256_H10_W8_L2`, `HSS_SHA256_H5_W8_L3`) with uniform parameter sets
 - Added stateful signing API: `PK_StatefulSigner`, `SignerStateStore`, `StateReservation`, `InsecureMemoryStateStore`, `FileStateStore`
 - Added `FileStateStore` durable backend (write-ahead persistence, HMAC-SHA256 integrity, fail-closed poisoning, Win32/POSIX/macOS `F_FULLFSYNC` flush)
-- Added ASN.1 wiring for RFC 8708 `id-alg-hss-lms-hashsig` (X.509 SubjectPublicKeyInfo, library-local PKCS#8)
+- Added ASN.1 wiring for the RFC 9708 `id-alg-hss-lms-hashsig` OID (RFC 9802 X.509 SubjectPublicKeyInfo, library-local PKCS#8)
 - Added Save/Load round-trip tests for ML-KEM, ML-DSA, SLH-DSA
 - Added Android `x86_64` and `x86` build coverage in CI
 - Added legacy compiler CI lanes (GCC 9-10, Clang 11-14)
