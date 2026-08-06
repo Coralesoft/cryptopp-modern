@@ -19,8 +19,6 @@ size_t OAEP_Base::MaxUnpaddedLength(size_t paddedLength) const
 
 void OAEP_Base::Pad(RandomNumberGenerator &rng, const byte *input, size_t inputLength, byte *oaepBlock, size_t oaepBlockLen, const NameValuePairs &parameters) const
 {
-	CRYPTOPP_ASSERT (inputLength <= MaxUnpaddedLength(oaepBlockLen));
-
 	// convert from bit length to byte length
 	if (oaepBlockLen % 8 != 0)
 	{
@@ -31,7 +29,16 @@ void OAEP_Base::Pad(RandomNumberGenerator &rng, const byte *input, size_t inputL
 
 	member_ptr<HashTransformation> pHash(NewHash());
 	const size_t hLen = pHash->DigestSize();
-	const size_t seedLen = hLen, dbLen = oaepBlockLen-seedLen;
+	const size_t seedLen = hLen;
+
+	// DB must hold the digest, the 0x01 separator and the message. The second
+	// test is a subtraction so a large inputLength cannot overflow the bound.
+	if (oaepBlockLen < 2*hLen+1 || inputLength > oaepBlockLen-(2*hLen+1))
+		throw InvalidArgument("OAEP_Base::Pad: oaepBlock is too small for the digest and input");
+
+	CRYPTOPP_ASSERT(inputLength <= oaepBlockLen-(2*hLen+1));
+
+	const size_t dbLen = oaepBlockLen-seedLen;
 	byte *const maskedSeed = oaepBlock;
 	byte *const maskedDB = oaepBlock+seedLen;
 
@@ -64,9 +71,15 @@ DecodingResult OAEP_Base::Unpad(const byte *oaepBlock, size_t oaepBlockLen, byte
 
 	member_ptr<HashTransformation> pHash(NewHash());
 	const size_t hLen = pHash->DigestSize();
-	const size_t seedLen = hLen, dbLen = oaepBlockLen-seedLen;
+	const size_t seedLen = hLen;
 
-	invalid = (oaepBlockLen < 2*hLen+1) || invalid;
+	// A block this small cannot hold an encoding, and the dbLen computation
+	// below underflows. The block length and hash choice are public
+	// parameters, so returning early discloses nothing about the contents.
+	if (oaepBlockLen < 2*hLen+1)
+		return DecodingResult();
+
+	const size_t dbLen = oaepBlockLen-seedLen;
 
 	SecByteBlock t(oaepBlock, oaepBlockLen);
 	byte *const maskedSeed = t;
