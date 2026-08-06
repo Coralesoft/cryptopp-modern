@@ -222,6 +222,100 @@ bool ValidateRSA_Encrypt()
 		std::cout << (fail ? "FAILED    " : "passed    ");
 		std::cout << "PKCS 2.0 encryption and decryption\n";
 	}
+	{
+		// A block shorter than a seed, a digest and a separator cannot carry an
+		// OAEP encoding. Both directions must reject it rather than compute a
+		// length that underflows and walk off the block.
+		OAEP<SHA512> oaep;
+		const size_t hLen = SHA512::DIGESTSIZE;
+		const size_t blockLen = 2*hLen - 1;
+		SecByteBlock block(blockLen), recovered(blockLen), message(1);
+		std::memset(block, 0xa5, block.size());
+		std::memset(recovered, 0, recovered.size());
+		std::memset(message, 0x2a, message.size());
+
+		DecodingResult result = oaep.Unpad(block, 8*blockLen, recovered, g_nullNameValuePairs);
+		fail = result.isValidCoding || (result.messageLength != 0);
+
+		fail = (FindIfNot(recovered.begin(), recovered.end(), byte(0)) != recovered.end()) || fail;
+
+		try
+		{
+			oaep.Pad(GlobalRNG(), message, message.size(), block, 8*blockLen, g_nullNameValuePairs);
+			fail = true;
+		}
+		catch (const InvalidArgument&) {}
+
+		pass = pass && !fail;
+
+		std::cout << (fail ? "FAILED    " : "passed    ");
+		std::cout << "OAEP undersized block rejection\n";
+	}
+	{
+		// The smallest legal block is a seed, a digest and the separator, and
+		// carries an empty message. It must round trip, while one byte less is
+		// rejected in both directions.
+		OAEP<SHA512> oaep;
+		const size_t hLen = SHA512::DIGESTSIZE;
+		const size_t minLen = 2*hLen + 1;
+		SecByteBlock block(minLen), recovered(minLen), message(1);
+		std::memset(block, 0, block.size());
+		std::memset(recovered, 0xa5, recovered.size());
+		std::memset(message, 0x2a, message.size());
+
+		oaep.Pad(GlobalRNG(), message, 0, block, 8*minLen, g_nullNameValuePairs);
+		DecodingResult result = oaep.Unpad(block, 8*minLen, recovered, g_nullNameValuePairs);
+		fail = !result.isValidCoding || (result.messageLength != 0);
+
+		SecByteBlock shortBlock(minLen-1);
+		std::memset(shortBlock, 0, shortBlock.size());
+		std::memset(recovered, 0xa5, recovered.size());
+
+		result = oaep.Unpad(shortBlock, 8*(minLen-1), recovered, g_nullNameValuePairs);
+		fail = result.isValidCoding || (result.messageLength != 0) || fail;
+		fail = (FindIfNot(recovered.begin(), recovered.end(), byte(0xa5)) != recovered.end()) || fail;
+
+		try
+		{
+			oaep.Pad(GlobalRNG(), message, 0, shortBlock, 8*(minLen-1), g_nullNameValuePairs);
+			fail = true;
+		}
+		catch (const InvalidArgument&) {}
+
+		// A message one byte too long for the smallest legal block exercises
+		// the input-length half of the Pad guard rather than the block size.
+		try
+		{
+			oaep.Pad(GlobalRNG(), message, 1, block, 8*minLen, g_nullNameValuePairs);
+			fail = true;
+		}
+		catch (const InvalidArgument&) {}
+
+		pass = pass && !fail;
+
+		std::cout << (fail ? "FAILED    " : "passed    ");
+		std::cout << "OAEP minimum block size\n";
+	}
+	{
+		// The same defect through the public API: a modulus too small for
+		// SHA-512 OAEP reaches Unpad on every decrypt, valid ciphertext or not.
+		RSAES<OAEP<SHA512> >::Decryptor rsaPriv(GlobalRNG(), 1024);
+		SecByteBlock ct(rsaPriv.FixedCiphertextLength());
+		SecByteBlock pt(rsaPriv.MaxPlaintextLength(ct.size()) + 1);
+
+		// A small integer, so the value stays below the modulus and the private
+		// key operation does not fail its own consistency check.
+		std::memset(ct, 0, ct.size());
+		ct[ct.size()-1] = 2;
+		std::memset(pt, 0, pt.size());
+
+		DecodingResult result = rsaPriv.Decrypt(GlobalRNG(), ct, ct.size(), pt);
+		fail = result.isValidCoding || (result.messageLength != 0);
+		pass = pass && !fail;
+
+		std::cout << (fail ? "FAILED    " : "passed    ");
+		std::cout << "OAEP decryption with an undersized modulus\n";
+	}
 
 	return pass;
 }
