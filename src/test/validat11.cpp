@@ -94,16 +94,18 @@ static bool TestMLKEMEncapsDecaps(const char* name)
 			return false;
 		}
 
-		// Test with modified ciphertext (implicit rejection)
+		// Test with modified ciphertext. This is a smoke test over freshly
+		// generated keys; TestMLKEMDecapsKAT checks the FIPS 203 rejection
+		// value itself against the ACVP vectors.
 		SecByteBlock modifiedCt(ciphertext);
 		modifiedCt[0] ^= 0xFF;
 
 		SecByteBlock sharedSecret3(decapsulator.SharedSecretLength());
 		decapsulator.Decapsulate(modifiedCt, sharedSecret3);
 
-		// Modified ciphertext should produce different shared secret
+		// A modified ciphertext should not reproduce the valid shared secret
 		if (std::memcmp(sharedSecret1.begin(), sharedSecret3.begin(), sharedSecret1.size()) == 0) {
-			std::cout << "FAILED:  " << name << " implicit rejection failed" << std::endl;
+			std::cout << "FAILED:  " << name << " modified ciphertext returned valid shared secret" << std::endl;
 			return false;
 		}
 
@@ -211,6 +213,114 @@ static bool TestMLKEMSaveLoad(const char* name)
 	}
 }
 
+static SecByteBlock MLKEMFromHex(const std::string& hex)
+{
+	std::string bin;
+	StringSource(hex, true, new HexDecoder(new StringSink(bin)));
+	return SecByteBlock(reinterpret_cast<const byte*>(bin.data()), bin.size());
+}
+
+template <class PARAMS>
+static bool MLKEMDecapsVector(const SecByteBlock& dk, const SecByteBlock& ct,
+	const SecByteBlock& expected)
+{
+	if (dk.size() != PARAMS::SECRET_KEY_SIZE || ct.size() != PARAMS::CIPHERTEXT_SIZE ||
+		expected.size() != PARAMS::SHARED_SECRET_SIZE)
+		return false;
+
+	MLKEMDecapsulator<PARAMS> decapsulator(dk.begin(), dk.size());
+
+	SecByteBlock sharedSecret(decapsulator.SharedSecretLength());
+	decapsulator.Decapsulate(ct.begin(), sharedSecret.begin());
+
+	return sharedSecret == expected;
+}
+
+static bool MLKEMDispatchDecaps(const std::string& name, const SecByteBlock& dk,
+	const SecByteBlock& ct, const SecByteBlock& expected)
+{
+	if (name == "ML-KEM-512")  return MLKEMDecapsVector<MLKEM_512>(dk, ct, expected);
+	if (name == "ML-KEM-768")  return MLKEMDecapsVector<MLKEM_768>(dk, ct, expected);
+	if (name == "ML-KEM-1024") return MLKEMDecapsVector<MLKEM_1024>(dk, ct, expected);
+	throw Exception(Exception::OTHER_ERROR, "ML-KEM KAT: unknown parameter set " + name);
+}
+
+// ACVP decapsulation vectors. Most carry a ciphertext the decapsulation key
+// rejects, so the expected shared secret is the FIPS 203 implicit-rejection
+// value. NIST supplies it, so this checks the rejection path against an
+// external reference rather than against our own recomputation of it.
+static bool TestMLKEMDecapsKAT()
+{
+	const char* name = "ML-KEM ACVP decapsulation KAT";
+
+	std::ifstream file(DataDir("TestVectors/mlkem.txt").c_str());
+	if (!file) {
+		std::cout << "FAILED:  " << name << " cannot open TestVectors/mlkem.txt" << std::endl;
+		return false;
+	}
+
+	std::string line, curName, dkHex, ctHex, ssHex;
+	unsigned int total = 0;
+	std::map<std::string, unsigned int> coverage;
+
+	try {
+		while (std::getline(file, line)) {
+			if (!line.empty() && line[line.size() - 1] == '\r')
+				line.erase(line.size() - 1);
+			if (line.empty() || line[0] == '#')
+				continue;
+
+			std::string::size_type colon = line.find(':');
+			if (colon == std::string::npos)
+				continue;
+			std::string key = line.substr(0, colon);
+			std::string val = line.substr(colon + 1);
+			while (!val.empty() && val[0] == ' ')
+				val.erase(0, 1);
+
+			if (key == "Name") curName = val;
+			else if (key == "DecapsulationKey") dkHex = val;
+			else if (key == "Ciphertext") ctHex = val;
+			else if (key == "SharedSecret") ssHex = val;
+			else if (key == "Test") {
+				if (val == "Decapsulate") {
+					if (!MLKEMDispatchDecaps(curName, MLKEMFromHex(dkHex),
+							MLKEMFromHex(ctHex), MLKEMFromHex(ssHex))) {
+						std::cout << "FAILED:  " << name << " " << curName
+							<< " shared secret mismatch" << std::endl;
+						return false;
+					}
+					coverage[curName]++;
+					total++;
+				}
+				curName.clear(); dkHex.clear(); ctHex.clear(); ssHex.clear();
+			}
+		}
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " - " << e.what() << std::endl;
+		return false;
+	}
+
+	// Guard against a truncated or partially converted vector file. The count is
+	// pinned deliberately: adding vectors should mean updating it here too.
+	static const char* const expectedSets[] = { "ML-KEM-512", "ML-KEM-768", "ML-KEM-1024" };
+	const unsigned int expectedPerSet = 3;
+
+	for (size_t i = 0; i < COUNTOF(expectedSets); i++) {
+		if (coverage[expectedSets[i]] != expectedPerSet) {
+			std::cout << "FAILED:  " << name << " " << expectedSets[i]
+				<< " coverage (" << coverage[expectedSets[i]]
+				<< " vectors; expected " << expectedPerSet << ")" << std::endl;
+			return false;
+		}
+	}
+
+	std::cout << "passed:  " << name << " (" << total << " vectors, "
+		<< COUNTOF(expectedSets) << " parameter sets)" << std::endl;
+	return true;
+}
+
 bool ValidateMLKEM()
 {
 	std::cout << "\nML-KEM (FIPS 203) validation suite running...\n\n";
@@ -233,6 +343,9 @@ bool ValidateMLKEM()
 	pass = TestMLKEMEncapsDecaps<MLKEM_1024>("ML-KEM-1024") && pass;
 	pass = TestMLKEMSerialization<MLKEM_1024>("ML-KEM-1024") && pass;
 	pass = TestMLKEMSaveLoad<MLKEM_1024>("ML-KEM-1024") && pass;
+
+	// ACVP known-answer vectors, covering the implicit-rejection path
+	pass = TestMLKEMDecapsKAT() && pass;
 
 	return pass;
 }
