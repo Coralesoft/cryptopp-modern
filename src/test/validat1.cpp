@@ -1053,7 +1053,7 @@ bool TestHuffmanCodes()
             for (unsigned int j=0; !source.AnyRetrievable(); ++j)
             {
                 decoder.Decode(reader, val);
-                (void)j;
+                CRYPTOPP_UNUSED(j);
             }
         }
         catch (const Exception&) {}
