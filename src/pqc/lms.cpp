@@ -807,8 +807,6 @@ void LMSSigner<LMS_PARAMS, OTS_PARAMS>::SignMessage(
     const LMSParams lmsP = MakeLMSParams<LMS_PARAMS>();
 
     const unsigned int n = OTS_PARAMS::N;
-    const unsigned int m = LMS_PARAMS::M;
-    const unsigned int h = LMS_PARAMS::H;
 
     // Reserve (authoritative safety boundary)
     StateReservation reservation = m_store->ReserveNext();

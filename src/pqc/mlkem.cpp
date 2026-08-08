@@ -853,7 +853,7 @@ void mlkem_decaps(byte *ss, const byte *ct, const byte *sk)
     for (unsigned int i = 0; i < InternalParams::CIPHERTEXTBYTES; i++)
         fail |= ct[i] ^ cmp[i];
     // Branchless normalization: 0 stays 0, non-zero becomes 1
-    fail = (fail | (-fail)) >> 31;
+    fail = (fail | (0u - fail)) >> 31;
 
     // FIPS 203: Implicit rejection K_bar = J(z || c) = SHAKE-256(z || c)
     byte k_bar[MLKEM_SYMBYTES];
@@ -862,9 +862,11 @@ void mlkem_decaps(byte *ss, const byte *ct, const byte *sk)
     j_hash.Update(ct, InternalParams::CIPHERTEXTBYTES);
     j_hash.TruncatedFinal(k_bar, MLKEM_SYMBYTES);
 
-    // FIPS 203: Select K' (success) or K_bar (failure) in constant time
+    // FIPS 203: Select K' (success) or K_bar (failure) in constant time.
+    // Keep mask arithmetic unsigned: 0 -> 0, 1 -> all bits set.
+    const unsigned int failMask = 0u - fail;
     for (unsigned int i = 0; i < MLKEM_SYMBYTES; i++)
-        ss[i] = kr[i] ^ ((-fail) & (kr[i] ^ k_bar[i]));
+        ss[i] = kr[i] ^ (failMask & (kr[i] ^ k_bar[i]));
 
     // Zeroize secret data on stack
     SecureWipeBuffer(buf, sizeof(buf));
