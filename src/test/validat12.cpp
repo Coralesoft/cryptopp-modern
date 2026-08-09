@@ -680,9 +680,9 @@ static bool TestLMSDualFormDecodeOne(const char* name,
 			return false;
 		}
 
-		// RFC 9802 HSS L=1 form: u32str(1) || lms_public_key. Built here
-		// because the encoder still emits the legacy form. The fixed DER
-		// header assumes the 56-byte M32 raw key.
+		// RFC 9802 HSS L=1 form: u32str(1) || lms_public_key. Built
+		// independently of the encoder so this stays a decoder fixture.
+		// The fixed DER header assumes the 56-byte M32 raw key.
 		std::string rfcSpki;
 		StringSource("304E300D060B2A864886F70D0109100311033D0000000001", true,
 			new HexDecoder(new StringSink(rfcSpki)));

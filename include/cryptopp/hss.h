@@ -624,8 +624,9 @@ typedef HSS_Params<
 /// \details The RFC 9802 standards-facing form of a single LMS tree. For a
 ///  given seed and identifier it uses the same tree as LMS_SHA256_H5_W8,
 ///  with RFC 8554 HSS L=1 key and signature framing. Do not reuse an
-///  existing LMS private key with a new HSS L=1 state store. Continue the
-///  original signing state or generate a new key.
+///  existing LMS private key with a new HSS L=1 state store: a fresh
+///  store restarts the signature index, so the same LM-OTS one-time keys
+///  sign twice. Continue the original signing state or generate a new key.
 typedef HSS<HSS_SHA256_H5_W8_L1_Params> HSS_SHA256_H5_W8_L1;
 
 /// Parameters for 1-level HSS with H10/W8
@@ -636,8 +637,9 @@ typedef HSS_Params<
 /// \details The RFC 9802 standards-facing form of a single LMS tree. For a
 ///  given seed and identifier it uses the same tree as LMS_SHA256_H10_W8,
 ///  with RFC 8554 HSS L=1 key and signature framing. Do not reuse an
-///  existing LMS private key with a new HSS L=1 state store. Continue the
-///  original signing state or generate a new key.
+///  existing LMS private key with a new HSS L=1 state store: a fresh
+///  store restarts the signature index, so the same LM-OTS one-time keys
+///  sign twice. Continue the original signing state or generate a new key.
 typedef HSS<HSS_SHA256_H10_W8_L1_Params> HSS_SHA256_H10_W8_L1;
 
 /// 2-level HSS with H5/W8: 1,024 signatures
