@@ -97,42 +97,34 @@ DecodingResult PKCS_EncryptionPaddingScheme::Unpad(const byte *pkcsBlock, size_t
 	}
 	pkcsBlockLen /= 8;
 
-	// Require block type 2.
 	invalid = (pkcsBlock[0] != 2) || invalid;
 
 	// Constant-time separator search to mitigate timing attacks (Marvin Attack, CVE-2023-50979)
-	// Scan every byte to find first zero separator without variable-time loop termination
 	size_t separatorIndex = 0;
 	size_t foundSeparator = 0;
 
 	for (size_t j = 1; j < pkcsBlockLen; j++)
 	{
-		// Check if current byte is zero (separator)
 		size_t isZero = (pkcsBlock[j] == 0) ? 1 : 0;
 		size_t notFoundYet = 1 - foundSeparator;
 
-		// Constant-time conditional: record position using bitwise ops
-		// Equivalent to: if (isZero && notFoundYet) separatorIndex = j;
-		size_t mask = static_cast<size_t>(0) - (isZero & notFoundYet);  // all 1s if true, all 0s if false
+		size_t mask = static_cast<size_t>(0) - (isZero & notFoundYet);
 		separatorIndex = (separatorIndex & ~mask) | (j & mask);
-
-		// Mark that we found a separator
 		foundSeparator |= isZero;
 	}
 
-	// Position after the separator
 	size_t i = separatorIndex + 1;
-	CRYPTOPP_ASSERT(i==pkcsBlockLen || pkcsBlock[i-1]==0);
+	CRYPTOPP_ASSERT(foundSeparator == 0 ||
+		(separatorIndex < pkcsBlockLen && pkcsBlock[separatorIndex] == 0));
 
 	size_t outputLen = pkcsBlockLen - i;
 	invalid = (outputLen > maxOutputLen) || invalid;
 	invalid = (foundSeparator == 0) || invalid;  // No separator found
 
-	// Always perform memcpy to avoid timing leak from early return
-	// This ensures both valid and invalid padding take the same code path
-	std::memcpy (output, pkcsBlock+i, outputLen);
+	// Do not copy past the caller's maximum plaintext buffer.
+	const size_t copyLen = STDMIN(outputLen, maxOutputLen);
+	std::memcpy (output, pkcsBlock+i, copyLen);
 
-	// Return error on invalid padding, otherwise return decoded length
 	return invalid ? DecodingResult() : DecodingResult(outputLen);
 }
 
