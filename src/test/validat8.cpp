@@ -115,6 +115,137 @@ inline bool operator!=(const Rabin::PublicKey& lhs, const Rabin::PublicKey& rhs)
 	return !operator==(lhs, rhs);
 }
 
+// separatorIndex 0 means no separator.
+void BuildPKCSBlock(byte* block, size_t blockLen, size_t separatorIndex, byte blockType)
+{
+	for (size_t j = 0; j < blockLen; j++)
+		block[j] = (byte)(0x41 + (j % 0x3d));
+
+	block[0] = blockType;
+	if (separatorIndex != 0)
+		block[separatorIndex] = 0;
+}
+
+struct PKCSUnpadCase
+{
+	size_t separatorIndex;
+	byte blockType;
+	bool valid;
+};
+
+// Final-byte separator gives an empty message.
+const size_t PKCS_SEPARATOR_LAST = (size_t)-1;
+
+// The separator must follow at least eight padding bytes.
+const PKCSUnpadCase pkcsUnpadCases[] = {
+	{1, 2, false}, {2, 2, false}, {3, 2, false}, {4, 2, false},
+	{5, 2, false}, {6, 2, false}, {7, 2, false}, {8, 2, false},
+	{9, 2, true}, {10, 2, true}, {12, 2, true},
+	{PKCS_SEPARATOR_LAST, 2, true},
+	{0, 2, false},
+	{9, 3, false}
+};
+
+size_t PKCSSeparatorIndex(const PKCSUnpadCase& testCase, size_t blockLen)
+{
+	return testCase.separatorIndex == PKCS_SEPARATOR_LAST ?
+		blockLen - 1 : testCase.separatorIndex;
+}
+
+bool PKCSGuardIntact(const SecByteBlock& buffer, size_t outputLen)
+{
+	for (size_t j = outputLen; j < buffer.size(); j++)
+	{
+		if (buffer[j] != 0xCC)
+			return false;
+	}
+	return true;
+}
+
+bool TestPKCSUnpadBounds()
+{
+	// Keep the block byte-aligned so Unpad does not skip a leading byte.
+	const size_t blockBits = 1024;
+	const size_t blockLen = blockBits / 8;
+	const size_t guardLen = 16;
+
+	PKCS_EncryptionPaddingScheme padding;
+	const size_t maxOutputLen = padding.MaxUnpaddedLength(blockBits);
+
+	bool pass = true;
+	for (size_t k = 0; k < COUNTOF(pkcsUnpadCases); k++)
+	{
+		const PKCSUnpadCase& testCase = pkcsUnpadCases[k];
+		const size_t separatorIndex = PKCSSeparatorIndex(testCase, blockLen);
+
+		SecByteBlock block(blockLen);
+		BuildPKCSBlock(block, blockLen, separatorIndex, testCase.blockType);
+
+		SecByteBlock output(maxOutputLen + guardLen);
+		std::memset(output, 0xCC, output.size());
+
+		DecodingResult result = padding.Unpad(block, blockBits, output, g_nullNameValuePairs);
+
+		bool fail = (result.isValidCoding != testCase.valid);
+		fail = fail || !PKCSGuardIntact(output, maxOutputLen);
+		if (testCase.valid)
+			fail = fail || (result.messageLength != blockLen - separatorIndex - 1);
+
+		pass = pass && !fail;
+	}
+
+	std::cout << (pass ? "passed    " : "FAILED    ");
+	std::cout << "PKCS 1.5 unpad separator positions (" << COUNTOF(pkcsUnpadCases) << " cases)\n";
+	return pass;
+}
+
+bool TestPKCSChosenCiphertextBounds()
+{
+	FileSource keyFile(DataDir("TestData/rsa1024.dat").c_str(), true, new HexDecoder);
+	RSAES_PKCS1v15_Decryptor rsaPriv(keyFile);
+
+	FileSource pubKeyFile(DataDir("TestData/rsa1024.dat").c_str(), true, new HexDecoder);
+	RSA::PrivateKey rawPriv; rawPriv.Load(pubKeyFile);
+	RSA::PublicKey rsaPub(rawPriv);
+
+	const size_t ciphertextLen = rsaPriv.FixedCiphertextLength();
+	const size_t maxOutputLen = rsaPriv.MaxPlaintextLength(ciphertextLen);
+	// Unpad sees the type byte, eight padding bytes and the separator.
+	const size_t blockLen = maxOutputLen + 10;
+	const size_t guardLen = 16;
+
+	bool pass = true;
+	for (size_t k = 0; k < COUNTOF(pkcsUnpadCases); k++)
+	{
+		const PKCSUnpadCase& testCase = pkcsUnpadCases[k];
+		const size_t separatorIndex = PKCSSeparatorIndex(testCase, blockLen);
+
+		SecByteBlock block(blockLen);
+		BuildPKCSBlock(block, blockLen, separatorIndex, testCase.blockType);
+
+		// Encrypt the chosen block so decryption passes it to Unpad.
+		Integer chosen(block, blockLen);
+		SecByteBlock ciphertext(ciphertextLen);
+		rsaPub.ApplyFunction(chosen).Encode(ciphertext, ciphertextLen);
+
+		SecByteBlock output(maxOutputLen + guardLen);
+		std::memset(output, 0xCC, output.size());
+
+		DecodingResult result = rsaPriv.Decrypt(GlobalRNG(), ciphertext, ciphertextLen, output);
+
+		bool fail = (result.isValidCoding != testCase.valid);
+		fail = fail || !PKCSGuardIntact(output, maxOutputLen);
+		if (testCase.valid)
+			fail = fail || (result.messageLength != blockLen - separatorIndex - 1);
+
+		pass = pass && !fail;
+	}
+
+	std::cout << (pass ? "passed    " : "FAILED    ");
+	std::cout << "PKCS 1.5 chosen ciphertext bounds (" << COUNTOF(pkcsUnpadCases) << " cases)\n";
+	return pass;
+}
+
 ANONYMOUS_NAMESPACE_END
 
 bool ValidateRSA_Encrypt()
@@ -175,6 +306,13 @@ bool ValidateRSA_Encrypt()
 		RSAES_PKCS1v15_Encryptor rsaPub(rsaPriv);
 
 		fail = !CryptoSystemValidate(rsaPriv, rsaPub);
+		pass = pass && !fail;
+	}
+	{
+		fail = !TestPKCSUnpadBounds();
+		pass = pass && !fail;
+
+		fail = !TestPKCSChosenCiphertextBounds();
 		pass = pass && !fail;
 	}
 	{
