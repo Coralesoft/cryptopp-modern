@@ -91,11 +91,14 @@ cmake --build --preset=debug
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `CRYPTOPP_BUILD_TESTING` | `ON` | Build the test executable (cryptest.exe) |
+| `CRYPTOPP_BUILD_TESTING` | `ON` | Build the test executable (cryptest.exe) and register the CTest suite |
 | `CRYPTOPP_INSTALL` | `ON` | Generate install targets |
+| `CRYPTOPP_INSTALL_CRYPTEST` | `CRYPTOPP_BUILD_TESTING` | Install cryptest.exe with its TestData and TestVectors. Set explicitly to install cryptest without the test suite, or to run the suite without installing cryptest |
 | `CRYPTOPP_BUILD_SHARED` | `OFF` | Build a shared library (Unix-like platforms only; not supported on Windows) |
 | `CRYPTOPP_USE_OPENMP` | `OFF` | Enable OpenMP for parallel algorithms |
 | `CRYPTOPP_INCLUDE_PREFIX` | `cryptopp` | Header installation directory name |
+
+`CRYPTOPP_INSTALL_CRYPTEST` takes its default from `CRYPTOPP_BUILD_TESTING` on the first configure of a build directory. Like all CMake options the value is then cached, so changing `CRYPTOPP_BUILD_TESTING` in an existing build directory does not re-derive it; set it explicitly or start from a fresh build directory. Installing cryptest also requires `CRYPTOPP_INSTALL` (which is `ON` by default).
 
 ### x86/x64 SIMD Options
 
@@ -227,8 +230,8 @@ cmake --install build
 | `lib/` | Static library (`libcryptopp.a` or `cryptopp.lib`) |
 | `lib/pkgconfig/` | pkg-config files (`libcryptopp.pc` and the `cryptopp-modern.pc` alias) |
 | `lib/cmake/cryptopp-modern/` | CMake config files for `find_package()` |
-| `share/cryptopp/` | TestData and TestVectors |
-| `bin/` | Test executable (`cryptest.exe`) |
+| `share/cryptopp/` | TestData and TestVectors (with `CRYPTOPP_INSTALL_CRYPTEST`) |
+| `bin/` | Test executable (`cryptest.exe`, with `CRYPTOPP_INSTALL_CRYPTEST`) |
 
 ## SIMD Auto-Detection
 

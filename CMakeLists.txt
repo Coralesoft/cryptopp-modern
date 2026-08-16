@@ -111,6 +111,12 @@ option(CRYPTOPP_DISABLE_POWER9 "Disable POWER9" OFF)
 
 option(CRYPTOPP_BUILD_TESTING "Build library tests" ON)
 
+# Keep this after CRYPTOPP_BUILD_TESTING because its default follows that option.
+option(CRYPTOPP_INSTALL_CRYPTEST
+    "Install the cryptest tool and its test data"
+    "${CRYPTOPP_BUILD_TESTING}"
+)
+
 # Override the CRYPTOPP_INSTALL option to ON/OFF to respectively force
 # install/no-install behavior for cryptopp module.
 option(CRYPTOPP_INSTALL "Generate the install target for this project." ON)
@@ -1498,7 +1504,10 @@ target_link_libraries(
 # CRYPTOPP_DATA_DIR below depends on CMAKE_INSTALL_FULL_DATAROOTDIR.
 include(GNUInstallDirs)
 
-if(CRYPTOPP_BUILD_TESTING)
+if(
+    CRYPTOPP_BUILD_TESTING
+    OR (CRYPTOPP_INSTALL AND CRYPTOPP_INSTALL_CRYPTEST)
+)
     add_executable(cryptest ${cryptopp_SOURCES_TEST})
     target_link_libraries(cryptest PRIVATE cryptopp::cryptopp)
 
@@ -1514,7 +1523,7 @@ if(CRYPTOPP_BUILD_TESTING)
         )
     endif()
 
-    # Copy TestData and TestVectors to build directory so tests can run from there
+    # Keep build-tree cryptest runnable without relying on the source tree.
     add_custom_command(
         TARGET cryptest POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -1540,6 +1549,9 @@ if(CRYPTOPP_BUILD_TESTING)
                 CRYPTOPP_DATA_DIR="${CMAKE_INSTALL_FULL_DATAROOTDIR}/cryptopp/"
     )
 
+endif()
+
+if(CRYPTOPP_BUILD_TESTING)
     add_test(
         NAME cryptopp-modern-build_cryptest
         COMMAND
@@ -1640,15 +1652,21 @@ if(CRYPTOPP_INSTALL)
     )
 
     # Tests
-    if(CRYPTOPP_BUILD_TESTING)
-        install(TARGETS cryptest DESTINATION ${CMAKE_INSTALL_BINDIR})
+    if(CRYPTOPP_INSTALL_CRYPTEST)
+        install(
+            TARGETS cryptest
+            DESTINATION ${CMAKE_INSTALL_BINDIR}
+            COMPONENT ${runtime}
+        )
         install(
             DIRECTORY ${cryptopp_SOURCE_DIR}/TestData
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cryptopp
+            COMPONENT ${runtime}
         )
         install(
             DIRECTORY ${cryptopp_SOURCE_DIR}/TestVectors
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cryptopp
+            COMPONENT ${runtime}
         )
     endif()
 endif()
