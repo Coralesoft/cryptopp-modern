@@ -206,6 +206,10 @@ jobs:
         test -d build/install/include/cryptopp
         test -f build/install/include/cryptopp/aes.h
         test -f build/install/lib/cmake/cryptopp-modern/cryptopp-modernConfig.cmake
+        # The default install ships cryptest and its data.
+        test -f build/install/bin/cryptest.exe
+        test -d build/install/share/cryptopp/TestData
+        test -d build/install/share/cryptopp/TestVectors
         # Both pkg-config names must resolve and yield usable flags; the
         # cryptopp-modern alias forwards to libcryptopp through Requires.
         export PKG_CONFIG_PATH="$PWD/build/install/lib/pkgconfig"
@@ -223,6 +227,28 @@ jobs:
           exit 1
         fi
         ls -la build/install/include/cryptopp/ | head -20
+
+    - name: Verify install without cryptest
+      run: |
+        # Keep cryptest available for CTest but omit it from this install.
+        cmake build/install-test -DCRYPTOPP_INSTALL_CRYPTEST=OFF
+        cmake --install build/install-test --prefix build/install-notest
+        test -f build/install-notest/lib/libcryptopp.a
+        test ! -e build/install-notest/bin/cryptest.exe
+        test ! -e build/install-notest/share/cryptopp/TestData
+        test ! -e build/install-notest/share/cryptopp/TestVectors
+
+    - name: Verify cryptest-only install
+      run: |
+        # Install cryptest as a tool with CRYPTOPP_BUILD_TESTING disabled.
+        cmake build/install-test -DCRYPTOPP_BUILD_TESTING=OFF -DCRYPTOPP_INSTALL_CRYPTEST=ON
+        cmake --build build/install-test --target cryptest -j"$(nproc)"
+        cmake --install build/install-test --prefix build/install-tools
+        test -f build/install-tools/bin/cryptest.exe
+        test -d build/install-tools/share/cryptopp/TestData
+        test -d build/install-tools/share/cryptopp/TestVectors
+        cd "$RUNNER_TEMP"
+        "$GITHUB_WORKSPACE/build/install-tools/bin/cryptest.exe" v
 
     - name: Test find_package integration
       run: |
