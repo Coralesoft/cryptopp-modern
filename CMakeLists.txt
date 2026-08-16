@@ -1495,6 +1495,9 @@ target_link_libraries(
 # Tests
 # ============================================================================
 
+# CRYPTOPP_DATA_DIR below depends on CMAKE_INSTALL_FULL_DATAROOTDIR.
+include(GNUInstallDirs)
+
 if(CRYPTOPP_BUILD_TESTING)
     add_executable(cryptest ${cryptopp_SOURCES_TEST})
     target_link_libraries(cryptest PRIVATE cryptopp::cryptopp)
@@ -1534,7 +1537,7 @@ if(CRYPTOPP_BUILD_TESTING)
         ${cryptopp_SOURCE_DIR}/src/test/validat9.cpp
         APPEND PROPERTY
             COMPILE_DEFINITIONS
-                CRYPTOPP_DATA_DIR="${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATAROOTDIR}/cryptopp/"
+                CRYPTOPP_DATA_DIR="${CMAKE_INSTALL_FULL_DATAROOTDIR}/cryptopp/"
     )
 
     add_test(
@@ -1579,8 +1582,6 @@ endif()
 # ==============================================================================
 # Deployment instructions
 # ==============================================================================
-
-include(GNUInstallDirs)
 
 if(CRYPTOPP_INSTALL)
     set(TARGETS_EXPORT_NAME "cryptopp-modern_Targets")
