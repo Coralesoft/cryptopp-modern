@@ -1,9 +1,9 @@
 # cryptopp-modern package configuration file
 
 prefix=@CMAKE_INSTALL_PREFIX@
-libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
-includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
-datadir=${prefix}/@CMAKE_INSTALL_DATAROOTDIR@/cryptopp
+libdir=@PC_LIBDIR@
+includedir=@PC_INCLUDEDIR@
+datadir=@PC_DATAROOTDIR@/cryptopp
 
 Name: cryptopp-modern
 URL: https://github.com/cryptopp-modern/cryptopp-modern

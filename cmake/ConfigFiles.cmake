@@ -28,6 +28,16 @@ function(_module_pkgconfig_files)
     endif()
     set(MODULE_LINK_LIBS "-lcryptopp${target_debug_postfix}")
 
+    # Keep relative pkg-config paths relative to ${prefix}, but pass absolute
+    # GNUInstallDirs overrides through unchanged.
+    foreach(_dir LIBDIR INCLUDEDIR DATAROOTDIR)
+        if(IS_ABSOLUTE "${CMAKE_INSTALL_${_dir}}")
+            set(PC_${_dir} "${CMAKE_INSTALL_${_dir}}")
+        else()
+            set(PC_${_dir} "\${prefix}/${CMAKE_INSTALL_${_dir}}")
+        endif()
+    endforeach()
+
     # Primary file is named libcryptopp.pc to match upstream Crypto++, so
     # `pkg-config libcryptopp` keeps working for existing consumers.
     configure_file(
