@@ -89,6 +89,10 @@ DecodingResult PKCS_EncryptionPaddingScheme::Unpad(const byte *pkcsBlock, size_t
 	bool invalid = false;
 	size_t maxOutputLen = MaxUnpaddedLength(pkcsBlockLen);
 
+	// Require room for 0x02 || PS (at least 8 bytes) || 0x00.
+	if (pkcsBlockLen / 8 < 10)
+		return DecodingResult();
+
 	// convert from bit length to byte length
 	if (pkcsBlockLen % 8 != 0)
 	{

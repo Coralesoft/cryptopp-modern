@@ -246,6 +246,88 @@ bool TestPKCSChosenCiphertextBounds()
 	return pass;
 }
 
+struct PKCSMinBlockCase
+{
+	size_t blockBits;
+	bool leadingZero;
+	size_t psLen;
+	bool valid;
+};
+
+// The minimum valid block is 0x02 || PS(8) || 0x00, ten bytes after the
+// leading 0x00 is accounted for. Shorter blocks are rejected; the byte-aligned
+// (72, 80) and non-byte-aligned (79, 87) lengths exercise both conversions.
+const PKCSMinBlockCase pkcsMinBlockCases[] = {
+	{72, false, 7, false},
+	{79, true,  7, false},
+	{80, false, 8, true},
+	{87, true,  8, true}
+};
+
+bool TestPKCSMinBlockSize()
+{
+	PKCS_EncryptionPaddingScheme padding;
+
+	bool pass = true;
+	for (size_t k = 0; k < COUNTOF(pkcsMinBlockCases); k++)
+	{
+		const PKCSMinBlockCase& testCase = pkcsMinBlockCases[k];
+		const size_t bufLen = BitsToBytes(testCase.blockBits);
+
+		SecByteBlock block(bufLen);
+		std::memset(block, 0x41, bufLen);   // nonzero padding filler
+
+		size_t pos = 0;
+		if (testCase.leadingZero)
+			block[pos++] = 0x00;
+		block[pos++] = 0x02;                // block type
+		pos += testCase.psLen;              // PS filler already nonzero
+		block[pos] = 0x00;                  // separator, empty message
+
+		const size_t maxOutputLen = padding.MaxUnpaddedLength(testCase.blockBits);
+		SecByteBlock output(maxOutputLen ? maxOutputLen : 1);
+
+		DecodingResult result = padding.Unpad(block, testCase.blockBits, output, g_nullNameValuePairs);
+
+		bool fail = (result.isValidCoding != testCase.valid);
+		if (testCase.valid)
+			fail = fail || (result.messageLength != 0);
+		pass = pass && !fail;
+	}
+
+	std::cout << (pass ? "passed    " : "FAILED    ");
+	std::cout << "PKCS 1.5 minimum block size (" << COUNTOF(pkcsMinBlockCases) << " cases)\n";
+	return pass;
+}
+
+bool TestPKCSUndersizedKey()
+{
+	// 8-bit modulus n = 221 (p = 13, q = 17), e = 5, d = 77, dp = 5, dq = 13,
+	// u = 10. Full CRT parameters so the private operation reaches Unpad. Such
+	// a key is cryptographically unusable; decryption must reject the block
+	// rather than read past the recovered buffer.
+	RSA::PrivateKey priv;
+	priv.Initialize(Integer("221"), Integer("5"), Integer("77"),
+		Integer("13"), Integer("17"), Integer("5"), Integer("13"), Integer("10"));
+	RSAES_PKCS1v15_Decryptor dec(priv);
+
+	const size_t ctLen = dec.FixedCiphertextLength();
+	const size_t maxPt = dec.MaxPlaintextLength(ctLen);
+
+	SecByteBlock ciphertext(ctLen ? ctLen : 1);
+	if (ctLen) ciphertext[0] = 0x07;   // value below the modulus
+	SecByteBlock output(maxPt ? maxPt : 1);
+
+	DecodingResult result = dec.Decrypt(GlobalRNG(), ciphertext, ctLen, output);
+
+	// This regression path requires a one-byte ciphertext.
+	bool pass = (ctLen == 1) && !result.isValidCoding;
+
+	std::cout << (pass ? "passed    " : "FAILED    ");
+	std::cout << "PKCS 1.5 undersized modulus rejected\n";
+	return pass;
+}
+
 ANONYMOUS_NAMESPACE_END
 
 bool ValidateRSA_Encrypt()
@@ -313,6 +395,12 @@ bool ValidateRSA_Encrypt()
 		pass = pass && !fail;
 
 		fail = !TestPKCSChosenCiphertextBounds();
+		pass = pass && !fail;
+
+		fail = !TestPKCSMinBlockSize();
+		pass = pass && !fail;
+
+		fail = !TestPKCSUndersizedKey();
 		pass = pass && !fail;
 	}
 	{
