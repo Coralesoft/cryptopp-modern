@@ -343,6 +343,40 @@ static void PlatformClose(int fd)
         close(fd);
 }
 
+// A new file's directory entry needs its own flush to be durable.
+static void PlatformFlushParentDir(const std::string &path)
+{
+    std::string dir;
+    std::string::size_type slash = path.find_last_of('/');
+    if (slash == std::string::npos)
+        dir = ".";
+    else if (slash == 0)
+        dir = "/";
+    else
+        dir = path.substr(0, slash);
+
+    int dfd;
+    do {
+        dfd = open(dir.c_str(), O_RDONLY
+#ifdef O_DIRECTORY
+            | O_DIRECTORY
+#endif
+        );
+    } while (dfd < 0 && errno == EINTR);
+    if (dfd < 0)
+        throw Exception(Exception::IO_ERROR,
+            "FileStateStore: cannot open parent directory for flush");
+
+    try {
+        PlatformFlush(dfd);
+    }
+    catch (...) {
+        PlatformClose(dfd);
+        throw;
+    }
+    PlatformClose(dfd);
+}
+
 #endif  // _WIN32
 
 // ---- HMAC helper ----
@@ -561,6 +595,7 @@ FileStateStore FileStateStore::Create(const std::string &path,
 #else
     PlatformWriteAt(store.m_fd, fileBuf, FILE_SIZE, 0);
     PlatformFlush(store.m_fd);
+    PlatformFlushParentDir(path);
 #endif
 
     return store;
