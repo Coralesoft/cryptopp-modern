@@ -26,6 +26,10 @@
 #  define NOMINMAX
 # endif
 # include <windows.h>
+#else
+# include <fcntl.h>
+# include <sys/stat.h>
+# include <unistd.h>
 #endif
 
 // Aggressive stack checking with VS2005 SP1 and above.
@@ -6402,6 +6406,89 @@ static bool TestFileStoreInProcessRollback()
 		return false;
 	}
 }
+
+static bool TestFileStoreCreateUnreadableParentDir()
+{
+	// POSIX only: Create() opens the parent directory to flush the new
+	// entry, which needs read permission. A write-and-search-only parent
+	// makes Create() throw after the file already exists.
+	const char* name = "FileStateStore (POSIX) unreadable parent dir";
+	const std::string dir = "test_filestore_noread_dir";
+	const std::string path = dir + "/state.state";
+
+	RemoveTestFile(path);
+	rmdir(dir.c_str());
+	if (mkdir(dir.c_str(), 0700) != 0) {
+		std::cout << "FAILED:  " << name << " test dir mkdir failed" << std::endl;
+		return false;
+	}
+	if (chmod(dir.c_str(), 0300) != 0) {
+		rmdir(dir.c_str());
+		std::cout << "FAILED:  " << name << " test dir chmod failed" << std::endl;
+		return false;
+	}
+
+	// Some filesystems accept the chmod without enforcing it (DrvFs, FAT,
+	// some network mounts). Probe before asserting the failure.
+	int probe;
+	do {
+		probe = open(dir.c_str(), O_RDONLY);
+	} while (probe < 0 && errno == EINTR);
+	if (probe >= 0) {
+		close(probe);
+		chmod(dir.c_str(), 0700);
+		rmdir(dir.c_str());
+		std::cout << "passed:  " << name
+			<< " (skipped: permissions not enforced)" << std::endl;
+		return true;
+	}
+	if (errno != EACCES && errno != EPERM) {
+		chmod(dir.c_str(), 0700);
+		rmdir(dir.c_str());
+		std::cout << "FAILED:  " << name << " probe open failed" << std::endl;
+		return false;
+	}
+
+	bool threw = false;
+	try {
+		FileStateStore store = FileStateStore::Create(path, 4);
+	}
+	catch (const Exception &e) {
+		if (e.GetErrorType() == Exception::IO_ERROR)
+			threw = true;
+	}
+	catch (...) {
+		// Restore permissions before cleanup.
+		chmod(dir.c_str(), 0700);
+		RemoveTestFile(path);
+		rmdir(dir.c_str());
+		throw;
+	}
+	chmod(dir.c_str(), 0700);
+
+	// The directory flush is the last step of Create(), so the throw
+	// leaves the complete 64-byte state file behind.
+	struct stat st;
+	const bool fileIntact = (stat(path.c_str(), &st) == 0
+		&& S_ISREG(st.st_mode) && st.st_size == 64);
+
+	RemoveTestFile(path);
+	rmdir(dir.c_str());
+
+	if (!threw) {
+		std::cout << "FAILED:  " << name
+			<< " Create() succeeded without parent read permission" << std::endl;
+		return false;
+	}
+	if (!fileIntact) {
+		std::cout << "FAILED:  " << name
+			<< " state file not intact after post-create failure" << std::endl;
+		return false;
+	}
+
+	std::cout << "passed:  " << name << std::endl;
+	return true;
+}
 #endif  // !_WIN32
 
 static bool TestZeroCapacityRejection()
@@ -6594,6 +6681,7 @@ bool ValidateFileStateStore()
 #ifndef _WIN32
 	pass = TestFileStoreConcurrentOpenRejected() && pass;
 	pass = TestFileStoreInProcessRollback() && pass;
+	pass = TestFileStoreCreateUnreadableParentDir() && pass;
 #endif
 	pass = TestFileStoreLMSIntegration() && pass;
 	pass = TestFileStoreHSSIntegration() && pass;

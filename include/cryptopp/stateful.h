@@ -331,7 +331,14 @@ public:
     /// \param keyLen length of integrity key in bytes (0 if no key)
     /// \details Throws if file already exists. Silent overwrite is not
     ///  supported because it risks destroying valid signing state.
-    /// \throw Exception with IO_ERROR if file already exists or cannot be created
+    /// \details On POSIX the parent directory is flushed after the file so
+    ///  the new directory entry is durable before Create() returns. This
+    ///  needs read permission on the parent and a filesystem that supports
+    ///  fsync on a directory; a flush failure throws after the file has
+    ///  been created, so the state file may exist on disk after a throw.
+    ///  Windows flushes the file only, without a directory-entry guarantee.
+    /// \throw Exception with IO_ERROR if file already exists, cannot be
+    ///  created, or the file or parent directory cannot be flushed
     static FileStateStore Create(const std::string &path,
                                   uint64_t totalLeaves,
                                   const byte *integrityKey = NULLPTR,
