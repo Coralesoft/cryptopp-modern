@@ -767,6 +767,8 @@ template <class PARAMS>
 void SLHDSAPrivateKey<PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     // PKCS#8 OneAsymmetricKey format (RFC 5958)
+    SecByteBlock sk(SECRET_KEYLENGTH);
+
     BERSequenceDecoder privateKeyInfo(bt);
         word32 version;
         BERDecodeUnsigned<word32>(privateKeyInfo, version, INTEGER, 0, 1);
@@ -782,13 +784,13 @@ void SLHDSAPrivateKey<PARAMS>::BERDecode(BufferedTransformation &bt)
                 if (!privateKey.IsDefiniteLength() ||
                     privateKey.RemainingLength() != SECRET_KEYLENGTH)
                     BERDecodeError();
-                SecByteBlock sk(SECRET_KEYLENGTH);
                 privateKey.Get(sk.begin(), SECRET_KEYLENGTH);
-                SetPrivateKey(sk.begin(), SECRET_KEYLENGTH);
             privateKey.MessageEnd();
         octetString.MessageEnd();
 
     privateKeyInfo.MessageEnd();
+
+    SetPrivateKey(sk.begin(), SECRET_KEYLENGTH);
 }
 
 // ******************** SLHDSAPublicKey Implementation ************************* //
@@ -842,6 +844,8 @@ template <class PARAMS>
 void SLHDSAPublicKey<PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     // X.509 SubjectPublicKeyInfo format (RFC 5280)
+    SecByteBlock subjectPublicKey;
+
     BERSequenceDecoder publicKeyInfo(bt);
         BERSequenceDecoder algorithm(publicKeyInfo);
             OID oid(algorithm);
@@ -849,14 +853,14 @@ void SLHDSAPublicKey<PARAMS>::BERDecode(BufferedTransformation &bt)
                 BERDecodeError();
         algorithm.MessageEnd();
 
-        SecByteBlock subjectPublicKey;
         unsigned int unusedBits;
         BERDecodeBitString(publicKeyInfo, subjectPublicKey, unusedBits);
         if (unusedBits != 0 || subjectPublicKey.size() != PUBLIC_KEYLENGTH)
             BERDecodeError();
-        SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEYLENGTH);
 
     publicKeyInfo.MessageEnd();
+
+    SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEYLENGTH);
 }
 
 // ******************** SLHDSASigner Implementation ************************* //

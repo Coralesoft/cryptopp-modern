@@ -678,6 +678,9 @@ void LMSPrivateKey<LMS_PARAMS, OTS_PARAMS>::BERDecode(BufferedTransformation &bt
     // Library PKCS#8 wrapping with LMS OID. Version 0 only.
     const size_t privKeyLen = SEED_SIZE + I_SIZE;
 
+    SecByteBlock seed(SEED_SIZE);
+    SecByteBlock identifier(I_SIZE);
+
     BERSequenceDecoder privateKeyInfo(bt);
         word32 version;
         BERDecodeUnsigned<word32>(privateKeyInfo, version, INTEGER, 0, 0);
@@ -693,15 +696,14 @@ void LMSPrivateKey<LMS_PARAMS, OTS_PARAMS>::BERDecode(BufferedTransformation &bt
                 if (!privateKey.IsDefiniteLength() ||
                     privateKey.RemainingLength() != privKeyLen)
                     BERDecodeError();
-                SecByteBlock seed(SEED_SIZE);
-                SecByteBlock identifier(I_SIZE);
                 privateKey.Get(seed.begin(), SEED_SIZE);
                 privateKey.Get(identifier.begin(), I_SIZE);
-                SetPrivateKey(seed.begin(), SEED_SIZE, identifier.begin(), I_SIZE);
             privateKey.MessageEnd();
         octetString.MessageEnd();
 
     privateKeyInfo.MessageEnd();
+
+    SetPrivateKey(seed.begin(), SEED_SIZE, identifier.begin(), I_SIZE);
 }
 
 // ******************** LMSVerifier ************************* //
@@ -1165,6 +1167,8 @@ template <class HSS_PARAMS>
 void HSSPublicKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     // X.509 SubjectPublicKeyInfo (RFC 9802)
+    SecByteBlock subjectPublicKey;
+
     BERSequenceDecoder publicKeyInfo(bt);
         BERSequenceDecoder algorithm(publicKeyInfo);
             OID oid(algorithm);
@@ -1172,14 +1176,14 @@ void HSSPublicKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
                 BERDecodeError();
         algorithm.MessageEnd();
 
-        SecByteBlock subjectPublicKey;
         unsigned int unusedBits;
         BERDecodeBitString(publicKeyInfo, subjectPublicKey, unusedBits);
         if (unusedBits != 0 || subjectPublicKey.size() != PUBLIC_KEY_SIZE)
             BERDecodeError();
-        SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEY_SIZE);
 
     publicKeyInfo.MessageEnd();
+
+    SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEY_SIZE);
 }
 
 // ******************** HSSPrivateKey ************************* //
@@ -1286,6 +1290,9 @@ void HSSPrivateKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     const size_t privKeyLen = SEED_SIZE + I_SIZE;
 
+    SecByteBlock seed(SEED_SIZE);
+    SecByteBlock identifier(I_SIZE);
+
     BERSequenceDecoder privateKeyInfo(bt);
         word32 version;
         BERDecodeUnsigned<word32>(privateKeyInfo, version, INTEGER, 0, 0);
@@ -1301,15 +1308,14 @@ void HSSPrivateKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
                 if (!privateKey.IsDefiniteLength() ||
                     privateKey.RemainingLength() != privKeyLen)
                     BERDecodeError();
-                SecByteBlock seed(SEED_SIZE);
-                SecByteBlock identifier(I_SIZE);
                 privateKey.Get(seed.begin(), SEED_SIZE);
                 privateKey.Get(identifier.begin(), I_SIZE);
-                SetPrivateKey(seed.begin(), SEED_SIZE, identifier.begin(), I_SIZE);
             privateKey.MessageEnd();
         octetString.MessageEnd();
 
     privateKeyInfo.MessageEnd();
+
+    SetPrivateKey(seed.begin(), SEED_SIZE, identifier.begin(), I_SIZE);
 }
 
 // ******************** HSSVerifier ************************* //
