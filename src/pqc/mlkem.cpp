@@ -881,6 +881,15 @@ void mlkem_decaps(byte *ss, const byte *ct, const byte *sk)
 
 using namespace MLKEM_Internal;
 
+// Fixed-size key storage uses all zero as the unset sentinel.
+static bool IsAllZero(const byte *p, size_t n)
+{
+    byte acc = 0;
+    for (size_t i = 0; i < n; ++i)
+        acc |= p[i];
+    return acc == 0;
+}
+
 // ******************** MLKEMPrivateKey ************************* //
 
 template <class PARAMS>
@@ -940,6 +949,9 @@ void MLKEMPrivateKey<PARAMS>::DEREncode(BufferedTransformation &bt) const
     //   privateKey                OCTET STRING,
     //   attributes            [0] IMPLICIT Attributes OPTIONAL,
     //   publicKey             [1] IMPLICIT PublicKey OPTIONAL }
+    if (IsAllZero(m_sk, SECRET_KEYLENGTH))
+        throw InvalidArgument("MLKEMPrivateKey: invalid private key");
+
     DERSequenceEncoder privateKeyInfo(bt);
         DEREncodeUnsigned<word32>(privateKeyInfo, 0);  // version
 
@@ -1050,6 +1062,9 @@ void MLKEMPublicKey<PARAMS>::DEREncode(BufferedTransformation &bt) const
     // SubjectPublicKeyInfo  ::=  SEQUENCE  {
     //   algorithm            AlgorithmIdentifier,
     //   subjectPublicKey     BIT STRING  }
+    if (IsAllZero(m_pk, PUBLIC_KEYLENGTH))
+        throw InvalidArgument("MLKEMPublicKey: invalid public key");
+
     DERSequenceEncoder publicKeyInfo(bt);
         DERSequenceEncoder algorithm(publicKeyInfo);
             GetAlgorithmID().DEREncode(algorithm);

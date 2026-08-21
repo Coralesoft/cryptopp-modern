@@ -1454,6 +1454,10 @@ void MLDSAPrivateKey<PARAMS>::SetPrivateKey(const byte *key, size_t len) {
 template <class PARAMS>
 void MLDSAPrivateKey<PARAMS>::DEREncode(BufferedTransformation &bt) const
 {
+    // m_sk is empty until the key is set; check before any output.
+    if (m_sk.size() != SECRET_KEYLENGTH)
+        throw InvalidArgument("MLDSAPrivateKey: invalid private key");
+
     // PKCS#8 OneAsymmetricKey format (RFC 5958)
     DERSequenceEncoder privateKeyInfo(bt);
         DEREncodeUnsigned<word32>(privateKeyInfo, 0);  // version
@@ -1537,6 +1541,9 @@ void MLDSAPublicKey<PARAMS>::SetPublicKey(const byte *key, size_t len) {
 template <class PARAMS>
 void MLDSAPublicKey<PARAMS>::DEREncode(BufferedTransformation &bt) const
 {
+    if (m_pk.size() != PUBLIC_KEYLENGTH)
+        throw InvalidArgument("MLDSAPublicKey: invalid public key");
+
     // X.509 SubjectPublicKeyInfo format (RFC 5280)
     DERSequenceEncoder publicKeyInfo(bt);
         DERSequenceEncoder algorithm(publicKeyInfo);

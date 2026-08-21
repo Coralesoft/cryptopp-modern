@@ -298,7 +298,7 @@ struct LMSPrivateKey : public PrivateKey
     CRYPTOPP_CONSTANT(SEED_SIZE = OTS_PARAMS::N);
     CRYPTOPP_CONSTANT(I_SIZE = 16);
 
-    LMSPrivateKey() : m_seed(SEED_SIZE), m_I(I_SIZE) {}
+    LMSPrivateKey() {}
     virtual ~LMSPrivateKey() = default;
 
     /// \brief Get the algorithm OID
@@ -345,6 +345,8 @@ struct LMSPrivateKey : public PrivateKey
     ///  format, not an RFC-standardised private key encoding.
     ///  Does not contain signing progress; reconstructing a
     ///  signer requires a valid state store.
+    ///  A key whose SEED or I is not at full size throws InvalidArgument
+    ///  before any output is written.
     void DEREncode(BufferedTransformation &bt) const;
 
     /// \brief BER decode the private key (library PKCS#8 wrapping)
