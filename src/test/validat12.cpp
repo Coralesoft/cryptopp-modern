@@ -1971,6 +1971,181 @@ static bool TestLMSSigGenVerifyACVP()
 	}
 }
 
+// Grow the outer SEQUENCE by one trailing NULL, so decoding parses the key
+// payload and then fails at the outer MessageEnd. Handles short and long-form
+// length, including a short form that no longer fits after the increment.
+static std::string LmsDerWithTrailingElement(const std::string& der)
+{
+	CRYPTOPP_ASSERT(!der.empty() && static_cast<byte>(der[0]) == 0x30);
+	const size_t extra = 2;  // one NULL: 0x05 0x00
+	std::string out = der;
+	byte first = static_cast<byte>(out[1]);
+	if (first < 0x80) {
+		size_t newLen = static_cast<size_t>(first) + extra;
+		if (newLen < 0x80) {
+			out[1] = static_cast<char>(newLen);
+		}
+		else {
+			out[1] = static_cast<char>(0x81);  // promote to one-byte long form
+			out.insert(out.begin() + 2, static_cast<char>(newLen));
+		}
+	}
+	else {
+		size_t n = first & 0x7F;
+		size_t carry = extra;
+		for (size_t i = 1 + n; i > 1 && carry; --i) {
+			size_t v = static_cast<byte>(out[i]) + carry;
+			out[i] = static_cast<char>(v & 0xFF);
+			carry = v >> 8;
+		}
+		CRYPTOPP_ASSERT(carry == 0);  // +2 never widens a real key's length field
+	}
+	out.push_back(static_cast<char>(0x05));
+	out.push_back(static_cast<char>(0x00));
+	return out;
+}
+
+// Rejected decodes must leave an existing key unchanged. Valid decodes must
+// stop at the end of the object and leave trailing input unread. For LMS/HSS
+// private keys the state is SEED || I.
+template <class PrivKey>
+static bool TestStatefulPrivDecodeState(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		PrivKey keyA, target;
+		keyA.GenerateRandom(rng, g_nullNameValuePairs);
+		target.GenerateRandom(rng, g_nullNameValuePairs);
+
+		if (VerifyBufsEqual(keyA.GetSeedBytePtr(), target.GetSeedBytePtr(), PrivKey::SEED_SIZE) &&
+			VerifyBufsEqual(keyA.GetIdentifierBytePtr(), target.GetIdentifierBytePtr(), PrivKey::I_SIZE)) {
+			std::cout << "FAILED:  " << name << " private test keys A and B identical" << std::endl;
+			return false;
+		}
+
+		std::string der;
+		StringSink sink(der);
+		keyA.DEREncode(sink);
+
+		SecByteBlock bSeed(target.GetSeedBytePtr(), PrivKey::SEED_SIZE);
+		SecByteBlock bId(target.GetIdentifierBytePtr(), PrivKey::I_SIZE);
+
+		bool pass = true;
+		bool rejected = false;
+		try {
+			std::string malformed = LmsDerWithTrailingElement(der);
+			StringSource src(malformed, true);
+			target.BERDecode(src);
+		}
+		catch (const BERDecodeErr&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " private malformed stream accepted" << std::endl;
+			pass = false;
+		}
+		if (!VerifyBufsEqual(target.GetSeedBytePtr(), bSeed, PrivKey::SEED_SIZE) ||
+			!VerifyBufsEqual(target.GetIdentifierBytePtr(), bId, PrivKey::I_SIZE)) {
+			std::cout << "FAILED:  " << name << " private key changed after rejected decode" << std::endl;
+			pass = false;
+		}
+
+		std::string withTail = der + "TAIL";
+		PrivKey key;
+		StringSource src2(withTail, true);
+		key.BERDecode(src2);
+		if (!VerifyBufsEqual(key.GetSeedBytePtr(), keyA.GetSeedBytePtr(), PrivKey::SEED_SIZE) ||
+			!VerifyBufsEqual(key.GetIdentifierBytePtr(), keyA.GetIdentifierBytePtr(), PrivKey::I_SIZE)) {
+			std::cout << "FAILED:  " << name << " private boundary decode mismatch" << std::endl;
+			pass = false;
+		}
+		byte tail[4];
+		if (src2.MaxRetrievable() != 4 || src2.Get(tail, 4) != 4 ||
+			!VerifyBufsEqual(tail, reinterpret_cast<const byte*>("TAIL"), 4)) {
+			std::cout << "FAILED:  " << name << " private trailing bytes consumed" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " private decode state (2 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " private decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+template <class HSS_PARAMS>
+static bool TestHSSPubDecodeState(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		typedef HSSPublicKey<HSS_PARAMS> PubKey;
+
+		HSSPrivateKey<HSS_PARAMS> privA, privB;
+		privA.GenerateRandom(rng, g_nullNameValuePairs);
+		privB.GenerateRandom(rng, g_nullNameValuePairs);
+		PubKey pubA, pubB;
+		privA.MakePublicKey(pubA);
+		privB.MakePublicKey(pubB);
+
+		const size_t len = PubKey::PUBLIC_KEY_SIZE;
+		SecByteBlock aBytes(pubA.GetPublicKeyBytePtr(), len);
+		SecByteBlock bBytes(pubB.GetPublicKeyBytePtr(), len);
+
+		if (VerifyBufsEqual(aBytes, bBytes, len)) {
+			std::cout << "FAILED:  " << name << " public test keys A and B identical" << std::endl;
+			return false;
+		}
+
+		std::string der;
+		StringSink sink(der);
+		pubA.DEREncode(sink);
+
+		PubKey target;
+		target.SetPublicKey(bBytes, len);
+
+		bool pass = true;
+		bool rejected = false;
+		try {
+			std::string malformed = LmsDerWithTrailingElement(der);
+			StringSource src(malformed, true);
+			target.BERDecode(src);
+		}
+		catch (const BERDecodeErr&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " public malformed stream accepted" << std::endl;
+			pass = false;
+		}
+		if (!VerifyBufsEqual(target.GetPublicKeyBytePtr(), bBytes, len)) {
+			std::cout << "FAILED:  " << name << " public key changed after rejected decode" << std::endl;
+			pass = false;
+		}
+
+		std::string withTail = der + "TAIL";
+		PubKey key;
+		StringSource src2(withTail, true);
+		key.BERDecode(src2);
+		if (!VerifyBufsEqual(key.GetPublicKeyBytePtr(), aBytes, len)) {
+			std::cout << "FAILED:  " << name << " public boundary decode mismatch" << std::endl;
+			pass = false;
+		}
+		byte tail[4];
+		if (src2.MaxRetrievable() != 4 || src2.Get(tail, 4) != 4 ||
+			!VerifyBufsEqual(tail, reinterpret_cast<const byte*>("TAIL"), 4)) {
+			std::cout << "FAILED:  " << name << " public trailing bytes consumed" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " public decode state (2 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " public decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 bool ValidateLMS()
 {
 	std::cout << "\nLMS (SP 800-208) validation suite running...\n\n";
@@ -2016,6 +2191,8 @@ bool ValidateLMS()
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSSpkiEncode() && pass;
 	pass = TestLMSSpkiEncodeInvalid<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestStatefulPrivDecodeState<LMSPrivateKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> >(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H5_W8_L1_Params>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
@@ -4814,6 +4991,10 @@ bool ValidateHSS()
 	pass = TestHSSMultipleSignatures<HSS_SHA256_H5_W8_L2_Params>(
 		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestHSSSerialization<HSS_SHA256_H5_W8_L2_Params>(
+		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestHSSPubDecodeState<HSS_SHA256_H5_W8_L2_Params>(
+		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestStatefulPrivDecodeState<HSSPrivateKey<HSS_SHA256_H5_W8_L2_Params> >(
 		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestHSSRFCAppendixFTC1() && pass;
 	pass = TestHSSRFCAppendixFTC2() && pass;
