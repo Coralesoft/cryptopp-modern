@@ -47,7 +47,8 @@ struct LMOTS_SHA256_N32_W1
     CRYPTOPP_CONSTANT(U = 256);    // ceil(8*N/W) = message coefficients
     CRYPTOPP_CONSTANT(LS = 7);
     CRYPTOPP_CONSTANT(SIG_LEN = 4 + 32 + 265 * 32);  // 8516
-    static_assert(SIG_LEN == 4 + N + P * N, "LMOTS W1 SIG_LEN mismatch");
+    static_assert(SIG_LEN == 4 + EnumToInt(N) + EnumToInt(P) * EnumToInt(N),
+        "LMOTS W1 SIG_LEN mismatch");
 
     /// \brief Algorithm name
     static std::string StaticAlgorithmName() { return "LMOTS-SHA256-N32-W1"; }
@@ -65,7 +66,8 @@ struct LMOTS_SHA256_N32_W2
     CRYPTOPP_CONSTANT(U = 128);    // ceil(8*N/W) = message coefficients
     CRYPTOPP_CONSTANT(LS = 6);
     CRYPTOPP_CONSTANT(SIG_LEN = 4 + 32 + 133 * 32);  // 4292
-    static_assert(SIG_LEN == 4 + N + P * N, "LMOTS W2 SIG_LEN mismatch");
+    static_assert(SIG_LEN == 4 + EnumToInt(N) + EnumToInt(P) * EnumToInt(N),
+        "LMOTS W2 SIG_LEN mismatch");
 
     /// \brief Algorithm name
     static std::string StaticAlgorithmName() { return "LMOTS-SHA256-N32-W2"; }
@@ -83,7 +85,8 @@ struct LMOTS_SHA256_N32_W4
     CRYPTOPP_CONSTANT(U = 64);    // ceil(8*N/W) = message coefficients
     CRYPTOPP_CONSTANT(LS = 4);
     CRYPTOPP_CONSTANT(SIG_LEN = 4 + 32 + 67 * 32);  // 2180
-    static_assert(SIG_LEN == 4 + N + P * N, "LMOTS W4 SIG_LEN mismatch");
+    static_assert(SIG_LEN == 4 + EnumToInt(N) + EnumToInt(P) * EnumToInt(N),
+        "LMOTS W4 SIG_LEN mismatch");
 
     /// \brief Algorithm name
     static std::string StaticAlgorithmName() { return "LMOTS-SHA256-N32-W4"; }
