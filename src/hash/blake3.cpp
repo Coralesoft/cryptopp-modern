@@ -420,7 +420,8 @@ void BLAKE3::Update(const byte *input, size_t length)
 	while (length > 0) {
 		// If current chunk is full, finalize it and start new chunk
 		if (m_state.m_chunk.m_buf_len == BLOCKSIZE &&
-		    m_state.m_chunk.m_blocks_compressed * BLOCKSIZE >= CHUNKSIZE - BLOCKSIZE) {
+		    m_state.m_chunk.m_blocks_compressed * BLOCKSIZE >=
+		        EnumToInt(CHUNKSIZE) - EnumToInt(BLOCKSIZE)) {
 
 			word32 chunk_cv[8];
 			ChunkStateOutput(m_state.m_chunk, chunk_cv);

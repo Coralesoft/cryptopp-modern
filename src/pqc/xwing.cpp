@@ -109,7 +109,8 @@ const byte* XWingPrivateKey::GetMLKEMPublicKeyPtr() const
     // Public key starts at offset SECRET_KEY_SIZE - PUBLIC_KEY_SIZE - 32 - 32
     // Actually for ML-KEM-768: sk (1152) || pk (1184) || H(pk) (32) || z (32) = 2400
     // Public key is at offset 1152
-    return m_mlkem_sk.begin() + (MLKEM_768::SECRET_KEY_SIZE - MLKEM_768::PUBLIC_KEY_SIZE - 32 - 32);
+    return m_mlkem_sk.begin() + (EnumToInt(MLKEM_768::SECRET_KEY_SIZE) -
+        EnumToInt(MLKEM_768::PUBLIC_KEY_SIZE) - 32 - 32);
 }
 
 void XWingPrivateKey::GetPublicKey(byte *publicKey) const

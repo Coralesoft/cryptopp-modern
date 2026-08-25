@@ -676,7 +676,7 @@ template <class LMS_PARAMS, class OTS_PARAMS>
 void LMSPrivateKey<LMS_PARAMS, OTS_PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     // Library PKCS#8 wrapping with LMS OID. Version 0 only.
-    const size_t privKeyLen = SEED_SIZE + I_SIZE;
+    const size_t privKeyLen = EnumToInt(SEED_SIZE) + EnumToInt(I_SIZE);
 
     BERSequenceDecoder privateKeyInfo(bt);
         word32 version;
@@ -1284,7 +1284,7 @@ void HSSPrivateKey<HSS_PARAMS>::DEREncode(BufferedTransformation &bt) const
 template <class HSS_PARAMS>
 void HSSPrivateKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
 {
-    const size_t privKeyLen = SEED_SIZE + I_SIZE;
+    const size_t privKeyLen = EnumToInt(SEED_SIZE) + EnumToInt(I_SIZE);
 
     BERSequenceDecoder privateKeyInfo(bt);
         word32 version;
