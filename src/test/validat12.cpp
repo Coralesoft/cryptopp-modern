@@ -1066,9 +1066,8 @@ static bool TestLMSSpkiEncode()
 	return pass;
 }
 
-template <class LMS_PARAMS, class OTS_PARAMS>
-static bool ExpectLMSEncodeReject(const char* name, const char* label,
-	const LMSPublicKey<LMS_PARAMS, OTS_PARAMS>& key)
+template <class Key>
+static bool ExpectLMSEncodeReject(const char* name, const char* label, const Key& key)
 {
 	std::string encoded;
 	StringSink sink(encoded);
@@ -2074,6 +2073,34 @@ static bool TestStatefulPrivDecodeState(const char* name)
 	}
 }
 
+// A private key is empty until GenerateRandom or SetPrivateKey.
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool TestLMSPrivateEncodeGuard(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		LMSPrivateKey<LMS_PARAMS, OTS_PARAMS> key;
+		bool pass = ExpectLMSEncodeReject(name, "default-constructed private", key);
+
+		key.GenerateRandom(rng, g_nullNameValuePairs);
+		std::string encoded;
+		StringSink sink(encoded);
+		key.DEREncode(sink);
+		if (encoded.empty()) {
+			std::cout << "FAILED:  " << name << " set private key encode" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " unset private key encode rejection" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " unset private key encode rejection - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 template <class HSS_PARAMS>
 static bool TestHSSPubDecodeState(const char* name)
 {
@@ -2146,6 +2173,53 @@ static bool TestHSSPubDecodeState(const char* name)
 	}
 }
 
+// A default public key is full-sized and zero-filled, so L and both root
+// typecodes are wrong. The tampered cases flip one bit in each field.
+template <class HSS_PARAMS>
+static bool TestHSSEncodeGuard(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		typedef HSSPublicKey<HSS_PARAMS> PubKey;
+
+		HSSPrivateKey<HSS_PARAMS> priv;
+		PubKey pub;
+		bool pass = ExpectLMSEncodeReject(name, "default-constructed private", priv);
+		pass = ExpectLMSEncodeReject(name, "default-constructed public", pub) && pass;
+
+		priv.GenerateRandom(rng, g_nullNameValuePairs);
+		priv.MakePublicKey(pub);
+		ByteQueue pubQueue, privQueue;
+		pub.DEREncode(pubQueue);
+		priv.DEREncode(privQueue);
+		if (pubQueue.MaxRetrievable() == 0 || privQueue.MaxRetrievable() == 0) {
+			std::cout << "FAILED:  " << name << " set key encode" << std::endl;
+			pass = false;
+		}
+
+		static const struct { size_t offset; const char* label; } tamper[] = {
+			{ 3, "mismatched L" },
+			{ 7, "mismatched LMS typecode" },
+			{ 11, "mismatched LM-OTS typecode" },
+		};
+		for (size_t i = 0; i < COUNTOF(tamper); ++i) {
+			SecByteBlock tampered(pub.GetPublicKeyBytePtr(), PubKey::PUBLIC_KEY_SIZE);
+			tampered[tamper[i].offset] ^= 0x01;
+			PubKey bad;
+			bad.SetPublicKey(tampered, tampered.size());
+			pass = ExpectLMSEncodeReject(name, tamper[i].label, bad) && pass;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " encode guard rejection (5 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " encode guard rejection - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 bool ValidateLMS()
 {
 	std::cout << "\nLMS (SP 800-208) validation suite running...\n\n";
@@ -2193,6 +2267,8 @@ bool ValidateLMS()
 	pass = TestLMSSpkiEncodeInvalid<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestStatefulPrivDecodeState<LMSPrivateKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> >(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestLMSPrivateEncodeGuard<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H5_W8_L1_Params>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
@@ -4995,6 +5071,8 @@ bool ValidateHSS()
 	pass = TestHSSPubDecodeState<HSS_SHA256_H5_W8_L2_Params>(
 		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestStatefulPrivDecodeState<HSSPrivateKey<HSS_SHA256_H5_W8_L2_Params> >(
+		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestHSSEncodeGuard<HSS_SHA256_H5_W8_L2_Params>(
 		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestHSSRFCAppendixFTC1() && pass;
 	pass = TestHSSRFCAppendixFTC2() && pass;

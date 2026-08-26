@@ -195,6 +195,74 @@ static bool TestPqcPrivateDecodeState(const char* name,
 	}
 }
 
+// Encoding a key that was never set must throw InvalidArgument and write
+// nothing. Once a key is set, the same object must encode.
+template <class Key>
+static bool ExpectPqcEncodeReject(const char* name, const char* label, const Key& key)
+{
+	ByteQueue queue;
+	bool rejected = false;
+	try {
+		key.DEREncode(queue);
+	}
+	catch (const InvalidArgument&) {
+		rejected = true;
+	}
+	if (!rejected) {
+		std::cout << "FAILED:  " << name << " " << label << " encoded" << std::endl;
+		return false;
+	}
+	if (queue.MaxRetrievable() != 0) {
+		std::cout << "FAILED:  " << name << " " << label << " wrote output" << std::endl;
+		return false;
+	}
+	return true;
+}
+
+// zeroIsUnset: the family stores keys in fixed-size blocks and treats
+// all-zero material as unset, so the setters must not defeat the guard.
+template <class PARAMS, class PubKey, class PrivKey>
+static bool TestPqcEncodeGuard(const char* name, bool zeroIsUnset)
+{
+	AutoSeededRandomPool rng;
+	try {
+		PubKey pub;
+		PrivKey priv;
+		bool pass = ExpectPqcEncodeReject(name, "default public", pub);
+		pass = ExpectPqcEncodeReject(name, "default private", priv) && pass;
+		unsigned int cases = 2;
+
+		if (zeroIsUnset) {
+			SecByteBlock zeros;
+			zeros.CleanNew(PARAMS::PUBLIC_KEY_SIZE);
+			pub.SetPublicKey(zeros, zeros.size());
+			pass = ExpectPqcEncodeReject(name, "all-zero public", pub) && pass;
+			zeros.CleanNew(PARAMS::SECRET_KEY_SIZE);
+			priv.SetPrivateKey(zeros, zeros.size());
+			pass = ExpectPqcEncodeReject(name, "all-zero private", priv) && pass;
+			cases += 2;
+		}
+
+		priv.GenerateRandom(rng, g_nullNameValuePairs);
+		pub.SetPublicKey(priv.GetPublicKeyBytePtr(), PARAMS::PUBLIC_KEY_SIZE);
+		ByteQueue pubQueue, privQueue;
+		pub.DEREncode(pubQueue);
+		priv.DEREncode(privQueue);
+		if (pubQueue.MaxRetrievable() == 0 || privQueue.MaxRetrievable() == 0) {
+			std::cout << "FAILED:  " << name << " set key encode" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " unset-key encode rejection (" << cases << " cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " unset-key encode rejection - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 // ******************** ML-KEM Validation (FIPS 203) ************************* //
 
 template <class PARAMS>
@@ -532,6 +600,8 @@ bool ValidateMLKEM()
 	pass = TestMLKEMDecapsKAT() && pass;
 
 	pass = TestMLKEMDecodeState<MLKEM_512>("ML-KEM-512") && pass;
+	pass = TestPqcEncodeGuard<MLKEM_512, MLKEMPublicKey<MLKEM_512>, MLKEMPrivateKey<MLKEM_512> >(
+		"ML-KEM-512", true) && pass;
 
 	return pass;
 }
@@ -799,6 +869,8 @@ bool ValidateMLDSA()
 	pass = TestMLDSASaveLoad<MLDSA_87>("ML-DSA-87") && pass;
 
 	pass = TestMLDSADecodeState<MLDSA_44>("ML-DSA-44") && pass;
+	pass = TestPqcEncodeGuard<MLDSA_44, MLDSAPublicKey<MLDSA_44>, MLDSAPrivateKey<MLDSA_44> >(
+		"ML-DSA-44", false) && pass;
 
 	return pass;
 }
@@ -1245,6 +1317,8 @@ bool ValidateSLHDSA()
 	pass = TestSLHDSAKeyGen<SLHDSA_SHA2_256f>("SLH-DSA-SHA2-256f") && pass;
 
 	pass = TestSLHDSADecodeState<SLHDSA_SHA2_128f>("SLH-DSA-SHA2-128f") && pass;
+	pass = TestPqcEncodeGuard<SLHDSA_SHA2_128f, SLHDSAPublicKey<SLHDSA_SHA2_128f>, SLHDSAPrivateKey<SLHDSA_SHA2_128f> >(
+		"SLH-DSA-SHA2-128f", true) && pass;
 
 	return pass;
 }
