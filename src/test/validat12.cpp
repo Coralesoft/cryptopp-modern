@@ -2101,6 +2101,51 @@ static bool TestLMSPrivateEncodeGuard(const char* name)
 	}
 }
 
+// Unset private keys must fail validation, public-key derivation and
+// signer construction.
+template <class PrivKey, class PubKey, class Signer>
+static bool TestStatefulUnsetKey(const char* name, uint64_t leaves)
+{
+	try {
+		PrivKey key;
+		bool pass = true;
+		if (key.Validate(NullRNG(), 0)) {
+			std::cout << "FAILED:  " << name << " unset private key validated" << std::endl;
+			pass = false;
+		}
+
+		bool rejected = false;
+		try {
+			PubKey pub;
+			key.MakePublicKey(pub);
+		}
+		catch (const InvalidArgument&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " unset private key derived a public key" << std::endl;
+			pass = false;
+		}
+
+		rejected = false;
+		InsecureMemoryStateStore store(leaves);
+		try {
+			Signer signer(key, store);
+		}
+		catch (const InvalidArgument&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " unset private key constructed a signer" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " unset private key rejection (3 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " unset private key rejection - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 template <class HSS_PARAMS>
 static bool TestHSSPubDecodeState(const char* name)
 {
@@ -2270,6 +2315,10 @@ bool ValidateLMS()
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSPrivateEncodeGuard<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestStatefulUnsetKey<LMSPrivateKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>,
+		LMSPublicKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>,
+		LMSSigner<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> >(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8", LMS_SHA256_M32_H5::TOTAL_LEAVES) && pass;
 	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H5_W8_L1_Params>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H10_W8_L1_Params>(
@@ -5074,6 +5123,10 @@ bool ValidateHSS()
 		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestHSSEncodeGuard<HSS_SHA256_H5_W8_L2_Params>(
 		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestStatefulUnsetKey<HSSPrivateKey<HSS_SHA256_H5_W8_L2_Params>,
+		HSSPublicKey<HSS_SHA256_H5_W8_L2_Params>, HSSSigner<HSS_SHA256_H5_W8_L2_Params> >(
+		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8",
+		HSS_SHA256_H5_W8_L2_Params::TotalSignatures()) && pass;
 	pass = TestHSSRFCAppendixFTC1() && pass;
 	pass = TestHSSRFCAppendixFTC2() && pass;
 	pass = TestHSSMalformedSignatures() && pass;
