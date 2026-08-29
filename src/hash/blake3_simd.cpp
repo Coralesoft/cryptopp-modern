@@ -39,11 +39,15 @@ extern const word32 BLAKE3_IV[8];
 // Message schedule for BLAKE3 - 7 rounds
 extern const byte BLAKE3_MSG_SCHEDULE[7][16];
 
+#if (CRYPTOPP_SSE41_AVAILABLE) || (CRYPTOPP_AVX2_AVAILABLE)
+
 // BLAKE3 constants
 static const size_t BLAKE3_BLOCK_LEN = 64;
 static const size_t BLAKE3_CHUNK_LEN = 1024;
 static const byte BLAKE3_CHUNK_START = 1;
 static const byte BLAKE3_CHUNK_END = 2;
+
+#endif
 
 #if CRYPTOPP_SSE41_AVAILABLE
 

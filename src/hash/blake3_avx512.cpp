@@ -29,13 +29,13 @@ extern const word32 BLAKE3_IV[8];
 // Message schedule for BLAKE3 - 7 rounds
 extern const byte BLAKE3_MSG_SCHEDULE[7][16];
 
+#if (CRYPTOPP_AVX512F_AVAILABLE) && (CRYPTOPP_AVX512VL_AVAILABLE)
+
 // BLAKE3 constants
 static const size_t BLAKE3_BLOCK_LEN = 64;
 static const size_t BLAKE3_CHUNK_LEN = 1024;
 static const byte BLAKE3_CHUNK_START = 1;
 static const byte BLAKE3_CHUNK_END = 2;
-
-#if (CRYPTOPP_AVX512F_AVAILABLE) && (CRYPTOPP_AVX512VL_AVAILABLE)
 
 // AVX512 helper macros and functions
 #define LOADU512(p)    _mm512_loadu_si512((const __m512i *)(const void*)(p))
