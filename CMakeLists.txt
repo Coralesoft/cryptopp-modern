@@ -663,7 +663,7 @@ if(
         check_compile_link_option(${aesni_flag} CRYPTOPP_HAVE_AESNI
                                   "${TEST_PROG_DIR}/test_x86_aes.cpp"
         )
-        if(CRYPTOPP_HAVE_CLMUL)
+        if(CRYPTOPP_HAVE_AESNI)
             list(APPEND CRYPTOPP_AES_FLAGS "${aesni_flag}")
             list(APPEND CRYPTOPP_SM4_FLAGS "${aesni_flag}")
             list(APPEND CRYPTOPP_SUN_LDFLAGS "${aesni_flag}")
@@ -674,7 +674,7 @@ if(
         check_compile_link_option(${avx_flag} CRYPTOPP_HAVE_AVX
                                   "${TEST_PROG_DIR}/test_x86_avx.cpp"
         )
-        if(CRYPTOPP_HAVE_CLMUL)
+        if(CRYPTOPP_HAVE_AVX)
             list(APPEND CRYPTOPP_SUN_LDFLAGS "${avx_flag}")
         else()
             set(avx_flag "")
@@ -683,7 +683,7 @@ if(
         check_compile_link_option(${avx2_flag} CRYPTOPP_HAVE_AVX2
                                   "${TEST_PROG_DIR}/test_x86_avx2.cpp"
         )
-        if(CRYPTOPP_HAVE_CLMUL)
+        if(CRYPTOPP_HAVE_AVX2)
             # BLAKE3 AVX2 needs both SSE4.1 (for fallback) and AVX2
             list(APPEND CRYPTOPP_BLAKE3_AVX2_FLAGS "${sse41_flag}" "${avx2_flag}")
             list(APPEND CRYPTOPP_CHACHA_AVX2_FLAGS "${avx2_flag}")
