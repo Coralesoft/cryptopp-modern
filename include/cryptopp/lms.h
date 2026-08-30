@@ -327,9 +327,11 @@ struct LMSPrivateKey : public PrivateKey
                        const byte *identifier, size_t idLen);
 
     /// \brief Get pointer to secret seed
+    /// \return pointer to SEED_SIZE bytes, or NULL until a key is set
     const byte* GetSeedBytePtr() const { return m_seed.begin(); }
 
     /// \brief Get pointer to identifier I
+    /// \return pointer to I_SIZE bytes, or NULL until a key is set
     const byte* GetIdentifierBytePtr() const { return m_I.begin(); }
 
     /// \brief Compute the corresponding public key
