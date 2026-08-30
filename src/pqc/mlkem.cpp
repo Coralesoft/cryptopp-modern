@@ -920,8 +920,11 @@ template <class PARAMS>
 void MLKEMPrivateKey<PARAMS>::GenerateRandom(RandomNumberGenerator &rng, const NameValuePairs &params)
 {
     CRYPTOPP_UNUSED(params);
+    // Generate into temporary storage so a failing generator leaves the key unchanged.
     byte pk[PUBLIC_KEYLENGTH];
-    mlkem_keypair<PARAMS>(pk, m_sk.begin(), rng);
+    FixedSizeSecBlock<byte, SECRET_KEYLENGTH> sk;
+    mlkem_keypair<PARAMS>(pk, sk.begin(), rng);
+    std::memcpy(m_sk.begin(), sk.begin(), SECRET_KEYLENGTH);
 }
 
 template <class PARAMS>

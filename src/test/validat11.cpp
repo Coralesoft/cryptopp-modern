@@ -9,6 +9,7 @@
 #include <cryptopp/osrng.h>
 #include <cryptopp/hex.h>
 #include <cryptopp/filters.h>
+#include <cstring>
 #include <cryptopp/sha.h>
 
 #include <cryptopp/mlkem.h>
@@ -315,6 +316,58 @@ static bool TestPqcDerFixtures(const char* name, byte privSeed, const char* priv
 }
 
 // ******************** ML-KEM Validation (FIPS 203) ************************* //
+
+// Fails on the first GenerateBlock call after the allowed count, so a test
+// can break key generation between its random draws.
+class CountedFailRNG : public RandomNumberGenerator
+{
+public:
+	explicit CountedFailRNG(unsigned int allowed) : m_allowed(allowed) {}
+	void GenerateBlock(byte *output, size_t size)
+	{
+		if (m_allowed == 0)
+			throw Exception(Exception::OTHER_ERROR, "CountedFailRNG: no more draws");
+		--m_allowed;
+		std::memset(output, 0x5a, size);
+	}
+private:
+	unsigned int m_allowed;
+};
+
+// Key generation draws d and then z. A failure on the second draw must leave
+// an existing key exactly as it was.
+template <class PARAMS>
+static bool TestMLKEMKeyGenFailure(const char* name)
+{
+	try {
+		AutoSeededRandomPool goodRng;
+		MLKEMPrivateKey<PARAMS> key;
+		key.GenerateRandom(goodRng, g_nullNameValuePairs);
+		SecByteBlock before(key.GetPrivateKeyBytePtr(), PARAMS::SECRET_KEY_SIZE);
+
+		CountedFailRNG rng(1);
+		bool threw = false;
+		try {
+			key.GenerateRandom(rng, g_nullNameValuePairs);
+		}
+		catch (const Exception&) { threw = true; }
+		if (!threw) {
+			std::cout << "FAILED:  " << name << " key generation completed with a failing generator" << std::endl;
+			return false;
+		}
+		if (!VerifyBufsEqual(key.GetPrivateKeyBytePtr(), before, before.size())) {
+			std::cout << "FAILED:  " << name << " key changed by failed key generation" << std::endl;
+			return false;
+		}
+
+		std::cout << "passed:  " << name << " failed key generation leaves key unchanged" << std::endl;
+		return true;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " failed key generation - " << e.what() << std::endl;
+		return false;
+	}
+}
 
 template <class PARAMS>
 static bool TestMLKEMKeyGen(const char* name)
@@ -631,6 +684,7 @@ bool ValidateMLKEM()
 
 	// ML-KEM-512
 	pass = TestMLKEMKeyGen<MLKEM_512>("ML-KEM-512") && pass;
+	pass = TestMLKEMKeyGenFailure<MLKEM_512>("ML-KEM-512") && pass;
 	pass = TestMLKEMEncapsDecaps<MLKEM_512>("ML-KEM-512") && pass;
 	pass = TestMLKEMSerialization<MLKEM_512>("ML-KEM-512") && pass;
 	pass = TestMLKEMSaveLoad<MLKEM_512>("ML-KEM-512") && pass;
