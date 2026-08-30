@@ -1454,6 +1454,10 @@ void MLDSAPrivateKey<PARAMS>::SetPrivateKey(const byte *key, size_t len) {
 template <class PARAMS>
 void MLDSAPrivateKey<PARAMS>::DEREncode(BufferedTransformation &bt) const
 {
+    // m_sk is empty until the key is set; check before any output.
+    if (m_sk.size() != SECRET_KEYLENGTH)
+        throw InvalidArgument("MLDSAPrivateKey: invalid private key");
+
     // PKCS#8 OneAsymmetricKey format (RFC 5958)
     DERSequenceEncoder privateKeyInfo(bt);
         DEREncodeUnsigned<word32>(privateKeyInfo, 0);  // version
@@ -1475,6 +1479,8 @@ template <class PARAMS>
 void MLDSAPrivateKey<PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     // PKCS#8 OneAsymmetricKey format (RFC 5958)
+    SecByteBlock sk(SECRET_KEYLENGTH);
+
     BERSequenceDecoder privateKeyInfo(bt);
         word32 version;
         BERDecodeUnsigned<word32>(privateKeyInfo, version, INTEGER, 0, 1);
@@ -1490,13 +1496,17 @@ void MLDSAPrivateKey<PARAMS>::BERDecode(BufferedTransformation &bt)
                 if (!privateKey.IsDefiniteLength() ||
                     privateKey.RemainingLength() != SECRET_KEYLENGTH)
                     BERDecodeError();
-                SecByteBlock sk(SECRET_KEYLENGTH);
                 privateKey.Get(sk.begin(), SECRET_KEYLENGTH);
-                SetPrivateKey(sk.begin(), SECRET_KEYLENGTH);
             privateKey.MessageEnd();
         octetString.MessageEnd();
 
     privateKeyInfo.MessageEnd();
+
+    // SetPrivateKey can throw after updating m_sk. Stage and swap on success.
+    MLDSAPrivateKey<PARAMS> staged;
+    staged.SetPrivateKey(sk.begin(), SECRET_KEYLENGTH);
+    m_sk.swap(staged.m_sk);
+    m_pk.swap(staged.m_pk);
 }
 
 // MLDSAPublicKey implementation
@@ -1531,6 +1541,9 @@ void MLDSAPublicKey<PARAMS>::SetPublicKey(const byte *key, size_t len) {
 template <class PARAMS>
 void MLDSAPublicKey<PARAMS>::DEREncode(BufferedTransformation &bt) const
 {
+    if (m_pk.size() != PUBLIC_KEYLENGTH)
+        throw InvalidArgument("MLDSAPublicKey: invalid public key");
+
     // X.509 SubjectPublicKeyInfo format (RFC 5280)
     DERSequenceEncoder publicKeyInfo(bt);
         DERSequenceEncoder algorithm(publicKeyInfo);
@@ -1545,6 +1558,8 @@ template <class PARAMS>
 void MLDSAPublicKey<PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     // X.509 SubjectPublicKeyInfo format (RFC 5280)
+    SecByteBlock subjectPublicKey;
+
     BERSequenceDecoder publicKeyInfo(bt);
         BERSequenceDecoder algorithm(publicKeyInfo);
             OID oid(algorithm);
@@ -1552,14 +1567,14 @@ void MLDSAPublicKey<PARAMS>::BERDecode(BufferedTransformation &bt)
                 BERDecodeError();
         algorithm.MessageEnd();
 
-        SecByteBlock subjectPublicKey;
         unsigned int unusedBits;
         BERDecodeBitString(publicKeyInfo, subjectPublicKey, unusedBits);
         if (unusedBits != 0 || subjectPublicKey.size() != PUBLIC_KEYLENGTH)
             BERDecodeError();
-        SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEYLENGTH);
 
     publicKeyInfo.MessageEnd();
+
+    SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEYLENGTH);
 }
 
 // MLDSASigner implementation

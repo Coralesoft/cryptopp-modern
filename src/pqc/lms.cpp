@@ -605,6 +605,9 @@ void LMSPrivateKey<LMS_PARAMS, OTS_PARAMS>::MakePublicKey(
 {
     using namespace LMS_Internal;
 
+    if (m_seed.size() != SEED_SIZE || m_I.size() != I_SIZE)
+        throw InvalidArgument("LMSPrivateKey: invalid private key");
+
     const OTSParams otsP = MakeOTSParams<OTS_PARAMS>();
     const LMSParams lmsP = MakeLMSParams<LMS_PARAMS>();
 
@@ -652,6 +655,10 @@ void LMSPrivateKey<LMS_PARAMS, OTS_PARAMS>::AssignFrom(const NameValuePairs &sou
 template <class LMS_PARAMS, class OTS_PARAMS>
 void LMSPrivateKey<LMS_PARAMS, OTS_PARAMS>::DEREncode(BufferedTransformation &bt) const
 {
+    // Empty until GenerateRandom or SetPrivateKey; check before any output.
+    if (m_seed.size() != SEED_SIZE || m_I.size() != I_SIZE)
+        throw InvalidArgument("LMSPrivateKey: invalid private key");
+
     // Library PKCS#8 wrapping with LMS OID.
     // Private key payload is SEED || I (concatenated, no leaf index).
     // This is not an RFC-defined private key format.
@@ -678,6 +685,9 @@ void LMSPrivateKey<LMS_PARAMS, OTS_PARAMS>::BERDecode(BufferedTransformation &bt
     // Library PKCS#8 wrapping with LMS OID. Version 0 only.
     const size_t privKeyLen = EnumToInt(SEED_SIZE) + EnumToInt(I_SIZE);
 
+    SecByteBlock seed(SEED_SIZE);
+    SecByteBlock identifier(I_SIZE);
+
     BERSequenceDecoder privateKeyInfo(bt);
         word32 version;
         BERDecodeUnsigned<word32>(privateKeyInfo, version, INTEGER, 0, 0);
@@ -693,15 +703,14 @@ void LMSPrivateKey<LMS_PARAMS, OTS_PARAMS>::BERDecode(BufferedTransformation &bt
                 if (!privateKey.IsDefiniteLength() ||
                     privateKey.RemainingLength() != privKeyLen)
                     BERDecodeError();
-                SecByteBlock seed(SEED_SIZE);
-                SecByteBlock identifier(I_SIZE);
                 privateKey.Get(seed.begin(), SEED_SIZE);
                 privateKey.Get(identifier.begin(), I_SIZE);
-                SetPrivateKey(seed.begin(), SEED_SIZE, identifier.begin(), I_SIZE);
             privateKey.MessageEnd();
         octetString.MessageEnd();
 
     privateKeyInfo.MessageEnd();
+
+    SetPrivateKey(seed.begin(), SEED_SIZE, identifier.begin(), I_SIZE);
 }
 
 // ******************** LMSVerifier ************************* //
@@ -801,6 +810,9 @@ LMSSigner<LMS_PARAMS, OTS_PARAMS>::LMSSigner(
     const PrivateKeyType &key, SignerStateStore &store)
     : m_key(key), m_store(&store)
 {
+    if (!m_key.Validate(NullRNG(), 0))
+        throw InvalidArgument("LMSSigner: invalid private key");
+
     // Precompute the Merkle tree on first construction.
     // Full tree stored in memory (suitable for H5/H10).
     using namespace LMS_Internal;
@@ -1150,6 +1162,15 @@ void HSSPublicKey<HSS_PARAMS>::AssignFrom(const NameValuePairs &source)
 template <class HSS_PARAMS>
 void HSSPublicKey<HSS_PARAMS>::DEREncode(BufferedTransformation &bt) const
 {
+    // L and the root typecodes are zero on a default-constructed key.
+    typedef typename HSS_PARAMS::template LMSParamsAt<0> RootLMS_P;
+    typedef typename HSS_PARAMS::template OTSParamsAt<0> RootOTS_P;
+    if (m_pk.size() != PUBLIC_KEY_SIZE ||
+        GetL() != HSS_PARAMS::L ||
+        LMS_Internal::LoadBE32(m_pk + 4) != RootLMS_P::TYPE_ID ||
+        LMS_Internal::LoadBE32(m_pk + 8) != RootOTS_P::TYPE_ID)
+        throw InvalidArgument("HSSPublicKey: invalid public key");
+
     // X.509 SubjectPublicKeyInfo (RFC 9802)
     // AlgorithmIdentifier parameters MUST be absent (not NULL)
     DERSequenceEncoder publicKeyInfo(bt);
@@ -1165,6 +1186,8 @@ template <class HSS_PARAMS>
 void HSSPublicKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     // X.509 SubjectPublicKeyInfo (RFC 9802)
+    SecByteBlock subjectPublicKey;
+
     BERSequenceDecoder publicKeyInfo(bt);
         BERSequenceDecoder algorithm(publicKeyInfo);
             OID oid(algorithm);
@@ -1172,14 +1195,14 @@ void HSSPublicKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
                 BERDecodeError();
         algorithm.MessageEnd();
 
-        SecByteBlock subjectPublicKey;
         unsigned int unusedBits;
         BERDecodeBitString(publicKeyInfo, subjectPublicKey, unusedBits);
         if (unusedBits != 0 || subjectPublicKey.size() != PUBLIC_KEY_SIZE)
             BERDecodeError();
-        SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEY_SIZE);
 
     publicKeyInfo.MessageEnd();
+
+    SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEY_SIZE);
 }
 
 // ******************** HSSPrivateKey ************************* //
@@ -1212,6 +1235,9 @@ template <class HSS_PARAMS>
 void HSSPrivateKey<HSS_PARAMS>::MakePublicKey(HSSPublicKey<HSS_PARAMS> &pub) const
 {
     using namespace LMS_Internal;
+
+    if (m_seed.size() != SEED_SIZE || m_I.size() != I_SIZE)
+        throw InvalidArgument("HSSPrivateKey: invalid private key");
 
     typedef typename HSS_PARAMS::template LMSParamsAt<0> RootLMS_P;
     typedef typename HSS_PARAMS::template OTSParamsAt<0> RootOTS_P;
@@ -1262,6 +1288,9 @@ void HSSPrivateKey<HSS_PARAMS>::AssignFrom(const NameValuePairs &source)
 template <class HSS_PARAMS>
 void HSSPrivateKey<HSS_PARAMS>::DEREncode(BufferedTransformation &bt) const
 {
+    if (m_seed.size() != SEED_SIZE || m_I.size() != I_SIZE)
+        throw InvalidArgument("HSSPrivateKey: invalid private key");
+
     // Library PKCS#8 wrapping. Inner payload is SEED || I only;
     // level count and parameter types are carried by the template type.
     DERSequenceEncoder privateKeyInfo(bt);
@@ -1286,6 +1315,9 @@ void HSSPrivateKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     const size_t privKeyLen = EnumToInt(SEED_SIZE) + EnumToInt(I_SIZE);
 
+    SecByteBlock seed(SEED_SIZE);
+    SecByteBlock identifier(I_SIZE);
+
     BERSequenceDecoder privateKeyInfo(bt);
         word32 version;
         BERDecodeUnsigned<word32>(privateKeyInfo, version, INTEGER, 0, 0);
@@ -1301,15 +1333,14 @@ void HSSPrivateKey<HSS_PARAMS>::BERDecode(BufferedTransformation &bt)
                 if (!privateKey.IsDefiniteLength() ||
                     privateKey.RemainingLength() != privKeyLen)
                     BERDecodeError();
-                SecByteBlock seed(SEED_SIZE);
-                SecByteBlock identifier(I_SIZE);
                 privateKey.Get(seed.begin(), SEED_SIZE);
                 privateKey.Get(identifier.begin(), I_SIZE);
-                SetPrivateKey(seed.begin(), SEED_SIZE, identifier.begin(), I_SIZE);
             privateKey.MessageEnd();
         octetString.MessageEnd();
 
     privateKeyInfo.MessageEnd();
+
+    SetPrivateKey(seed.begin(), SEED_SIZE, identifier.begin(), I_SIZE);
 }
 
 // ******************** HSSVerifier ************************* //
@@ -1440,6 +1471,10 @@ template <class HSS_PARAMS>
 HSSSigner<HSS_PARAMS>::HSSSigner(const PrivateKeyType &key, SignerStateStore &store)
     : m_rootKey(key), m_store(&store), m_levels(HSS_PARAMS::L), m_reconciled(false)
 {
+    // ReconcileState reads m_rootKey; reject an unset key at construction.
+    if (!m_rootKey.Validate(NullRNG(), 0))
+        throw InvalidArgument("HSSSigner: invalid private key");
+
     // Lazy: no caches built here. First SignMessage() calls ReconcileState().
     for (unsigned int i = 0; i < HSS_PARAMS::L; i++)
         m_levels[i].initialised = false;

@@ -24,6 +24,8 @@
 #include <cryptopp/asn.h>
 #include <cryptopp/oids.h>
 
+#include <cstring>
+
 NAMESPACE_BEGIN(CryptoPP)
 
 // ******************** Parameter Sets ************************* //
@@ -91,6 +93,7 @@ struct MLKEMPrivateKey : public PrivateKey
     CRYPTOPP_CONSTANT(SECRET_KEYLENGTH = PARAMS::SECRET_KEY_SIZE);
     CRYPTOPP_CONSTANT(PUBLIC_KEYLENGTH = PARAMS::PUBLIC_KEY_SIZE);
 
+    MLKEMPrivateKey() { std::memset(m_sk, 0, SECRET_KEYLENGTH); }
     virtual ~MLKEMPrivateKey() {}
 
     /// \brief Get the algorithm OID
@@ -137,6 +140,8 @@ struct MLKEMPrivateKey : public PrivateKey
 
     /// \brief DER encode the private key (PKCS#8 OneAsymmetricKey format)
     /// \param bt BufferedTransformation to write to
+    /// \details All-zero key material throws InvalidArgument before any
+    ///  output is written. This covers default-constructed keys.
     void DEREncode(BufferedTransformation &bt) const;
 
     /// \brief BER decode the private key (PKCS#8 OneAsymmetricKey format)
@@ -165,6 +170,7 @@ struct MLKEMPublicKey : public PublicKey
 {
     CRYPTOPP_CONSTANT(PUBLIC_KEYLENGTH = PARAMS::PUBLIC_KEY_SIZE);
 
+    MLKEMPublicKey() { std::memset(m_pk, 0, PUBLIC_KEYLENGTH); }
     virtual ~MLKEMPublicKey() {}
 
     /// \brief Get the algorithm OID
@@ -200,6 +206,8 @@ struct MLKEMPublicKey : public PublicKey
 
     /// \brief DER encode the public key (X.509 SubjectPublicKeyInfo format)
     /// \param bt BufferedTransformation to write to
+    /// \details All-zero key material throws InvalidArgument before any
+    ///  output is written. This covers default-constructed keys.
     void DEREncode(BufferedTransformation &bt) const;
 
     /// \brief BER decode the public key (X.509 SubjectPublicKeyInfo format)

@@ -1066,9 +1066,8 @@ static bool TestLMSSpkiEncode()
 	return pass;
 }
 
-template <class LMS_PARAMS, class OTS_PARAMS>
-static bool ExpectLMSEncodeReject(const char* name, const char* label,
-	const LMSPublicKey<LMS_PARAMS, OTS_PARAMS>& key)
+template <class Key>
+static bool ExpectLMSEncodeReject(const char* name, const char* label, const Key& key)
 {
 	std::string encoded;
 	StringSink sink(encoded);
@@ -1971,6 +1970,356 @@ static bool TestLMSSigGenVerifyACVP()
 	}
 }
 
+// Grow the outer SEQUENCE by one trailing NULL, so decoding parses the key
+// payload and then fails at the outer MessageEnd. Handles short and long-form
+// length, including a short form that no longer fits after the increment.
+static std::string LmsDerWithTrailingElement(const std::string& der)
+{
+	CRYPTOPP_ASSERT(!der.empty() && static_cast<byte>(der[0]) == 0x30);
+	const size_t extra = 2;  // one NULL: 0x05 0x00
+	std::string out = der;
+	byte first = static_cast<byte>(out[1]);
+	if (first < 0x80) {
+		size_t newLen = static_cast<size_t>(first) + extra;
+		if (newLen < 0x80) {
+			out[1] = static_cast<char>(newLen);
+		}
+		else {
+			out[1] = static_cast<char>(0x81);  // promote to one-byte long form
+			out.insert(out.begin() + 2, static_cast<char>(newLen));
+		}
+	}
+	else {
+		size_t n = first & 0x7F;
+		size_t carry = extra;
+		for (size_t i = 1 + n; i > 1 && carry; --i) {
+			size_t v = static_cast<byte>(out[i]) + carry;
+			out[i] = static_cast<char>(v & 0xFF);
+			carry = v >> 8;
+		}
+		CRYPTOPP_ASSERT(carry == 0);  // +2 never widens a real key's length field
+	}
+	out.push_back(static_cast<char>(0x05));
+	out.push_back(static_cast<char>(0x00));
+	return out;
+}
+
+// Rejected decodes must leave an existing key unchanged. Valid decodes must
+// stop at the end of the object and leave trailing input unread. For LMS/HSS
+// private keys the state is SEED || I.
+template <class PrivKey>
+static bool TestStatefulPrivDecodeState(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		PrivKey keyA, target;
+		keyA.GenerateRandom(rng, g_nullNameValuePairs);
+		target.GenerateRandom(rng, g_nullNameValuePairs);
+
+		if (VerifyBufsEqual(keyA.GetSeedBytePtr(), target.GetSeedBytePtr(), PrivKey::SEED_SIZE) &&
+			VerifyBufsEqual(keyA.GetIdentifierBytePtr(), target.GetIdentifierBytePtr(), PrivKey::I_SIZE)) {
+			std::cout << "FAILED:  " << name << " private test keys A and B identical" << std::endl;
+			return false;
+		}
+
+		std::string der;
+		StringSink sink(der);
+		keyA.DEREncode(sink);
+
+		SecByteBlock bSeed(target.GetSeedBytePtr(), PrivKey::SEED_SIZE);
+		SecByteBlock bId(target.GetIdentifierBytePtr(), PrivKey::I_SIZE);
+
+		bool pass = true;
+		bool rejected = false;
+		try {
+			std::string malformed = LmsDerWithTrailingElement(der);
+			StringSource src(malformed, true);
+			target.BERDecode(src);
+		}
+		catch (const BERDecodeErr&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " private malformed stream accepted" << std::endl;
+			pass = false;
+		}
+		if (!VerifyBufsEqual(target.GetSeedBytePtr(), bSeed, PrivKey::SEED_SIZE) ||
+			!VerifyBufsEqual(target.GetIdentifierBytePtr(), bId, PrivKey::I_SIZE)) {
+			std::cout << "FAILED:  " << name << " private key changed after rejected decode" << std::endl;
+			pass = false;
+		}
+
+		std::string withTail = der + "TAIL";
+		PrivKey key;
+		StringSource src2(withTail, true);
+		key.BERDecode(src2);
+		if (!VerifyBufsEqual(key.GetSeedBytePtr(), keyA.GetSeedBytePtr(), PrivKey::SEED_SIZE) ||
+			!VerifyBufsEqual(key.GetIdentifierBytePtr(), keyA.GetIdentifierBytePtr(), PrivKey::I_SIZE)) {
+			std::cout << "FAILED:  " << name << " private boundary decode mismatch" << std::endl;
+			pass = false;
+		}
+		byte tail[4];
+		if (src2.MaxRetrievable() != 4 || src2.Get(tail, 4) != 4 ||
+			!VerifyBufsEqual(tail, reinterpret_cast<const byte*>("TAIL"), 4)) {
+			std::cout << "FAILED:  " << name << " private trailing bytes consumed" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " private decode state (2 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " private decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+// A private key is empty until GenerateRandom or SetPrivateKey.
+template <class LMS_PARAMS, class OTS_PARAMS>
+static bool TestLMSPrivateEncodeGuard(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		LMSPrivateKey<LMS_PARAMS, OTS_PARAMS> key;
+		bool pass = ExpectLMSEncodeReject(name, "default-constructed private", key);
+
+		key.GenerateRandom(rng, g_nullNameValuePairs);
+		std::string encoded;
+		StringSink sink(encoded);
+		key.DEREncode(sink);
+		if (encoded.empty()) {
+			std::cout << "FAILED:  " << name << " set private key encode" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " unset private key encode rejection" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " unset private key encode rejection - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+// Unset private keys must fail validation, public-key derivation and
+// signer construction.
+template <class PrivKey, class PubKey, class Signer>
+static bool TestStatefulUnsetKey(const char* name, uint64_t leaves)
+{
+	try {
+		PrivKey key;
+		bool pass = true;
+		if (key.Validate(NullRNG(), 0)) {
+			std::cout << "FAILED:  " << name << " unset private key validated" << std::endl;
+			pass = false;
+		}
+
+		bool rejected = false;
+		try {
+			PubKey pub;
+			key.MakePublicKey(pub);
+		}
+		catch (const InvalidArgument&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " unset private key derived a public key" << std::endl;
+			pass = false;
+		}
+
+		rejected = false;
+		InsecureMemoryStateStore store(leaves);
+		try {
+			Signer signer(key, store);
+		}
+		catch (const InvalidArgument&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " unset private key constructed a signer" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " unset private key rejection (3 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " unset private key rejection - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+// Use deterministic key material to keep the DER digests reproducible.
+static void FillPattern(SecByteBlock& b, byte seed)
+{
+	for (size_t i = 0; i < b.size(); ++i)
+		b[i] = static_cast<byte>(seed + 3 * i);
+}
+
+template <class Key>
+static bool ExpectDerDigest(const char* name, const char* label, const Key& key,
+	const char* expected)
+{
+	std::string der, digest;
+	StringSink sink(der);
+	key.DEREncode(sink);
+	SHA256 hash;
+	StringSource(der, true, new HashFilter(hash, new HexEncoder(new StringSink(digest))));
+	if (digest != expected) {
+		std::cout << "FAILED:  " << name << " " << label << " DER digest " << digest << std::endl;
+		return false;
+	}
+	return true;
+}
+
+// header holds the typecode fields a public key must carry to encode:
+// LMS typecode || LM-OTS typecode for LMS, L || both typecodes for HSS.
+template <class PrivKey, class PubKey>
+static bool TestStatefulDerFixtures(const char* name, byte seedSeed, byte idSeed,
+	const char* privDigest, byte pubSeed, const byte* header, size_t headerLen,
+	const char* pubDigest)
+{
+	try {
+		PrivKey priv;
+		SecByteBlock seed(PrivKey::SEED_SIZE), id(PrivKey::I_SIZE);
+		FillPattern(seed, seedSeed);
+		FillPattern(id, idSeed);
+		priv.SetPrivateKey(seed, seed.size(), id, id.size());
+		bool pass = ExpectDerDigest(name, "private", priv, privDigest);
+
+		PubKey pub;
+		SecByteBlock material(PubKey::PUBLIC_KEY_SIZE);
+		FillPattern(material, pubSeed);
+		std::memcpy(material, header, headerLen);
+		pub.SetPublicKey(material, material.size());
+		pass = ExpectDerDigest(name, "public", pub, pubDigest) && pass;
+
+		if (pass)
+			std::cout << "passed:  " << name << " DER fixtures (2 keys)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " DER fixtures - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+template <class HSS_PARAMS>
+static bool TestHSSPubDecodeState(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		typedef HSSPublicKey<HSS_PARAMS> PubKey;
+
+		HSSPrivateKey<HSS_PARAMS> privA, privB;
+		privA.GenerateRandom(rng, g_nullNameValuePairs);
+		privB.GenerateRandom(rng, g_nullNameValuePairs);
+		PubKey pubA, pubB;
+		privA.MakePublicKey(pubA);
+		privB.MakePublicKey(pubB);
+
+		const size_t len = PubKey::PUBLIC_KEY_SIZE;
+		SecByteBlock aBytes(pubA.GetPublicKeyBytePtr(), len);
+		SecByteBlock bBytes(pubB.GetPublicKeyBytePtr(), len);
+
+		if (VerifyBufsEqual(aBytes, bBytes, len)) {
+			std::cout << "FAILED:  " << name << " public test keys A and B identical" << std::endl;
+			return false;
+		}
+
+		std::string der;
+		StringSink sink(der);
+		pubA.DEREncode(sink);
+
+		PubKey target;
+		target.SetPublicKey(bBytes, len);
+
+		bool pass = true;
+		bool rejected = false;
+		try {
+			std::string malformed = LmsDerWithTrailingElement(der);
+			StringSource src(malformed, true);
+			target.BERDecode(src);
+		}
+		catch (const BERDecodeErr&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " public malformed stream accepted" << std::endl;
+			pass = false;
+		}
+		if (!VerifyBufsEqual(target.GetPublicKeyBytePtr(), bBytes, len)) {
+			std::cout << "FAILED:  " << name << " public key changed after rejected decode" << std::endl;
+			pass = false;
+		}
+
+		std::string withTail = der + "TAIL";
+		PubKey key;
+		StringSource src2(withTail, true);
+		key.BERDecode(src2);
+		if (!VerifyBufsEqual(key.GetPublicKeyBytePtr(), aBytes, len)) {
+			std::cout << "FAILED:  " << name << " public boundary decode mismatch" << std::endl;
+			pass = false;
+		}
+		byte tail[4];
+		if (src2.MaxRetrievable() != 4 || src2.Get(tail, 4) != 4 ||
+			!VerifyBufsEqual(tail, reinterpret_cast<const byte*>("TAIL"), 4)) {
+			std::cout << "FAILED:  " << name << " public trailing bytes consumed" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " public decode state (2 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " public decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+// A default public key is full-sized and zero-filled, so L and both root
+// typecodes are wrong. The tampered cases flip one bit in each field.
+template <class HSS_PARAMS>
+static bool TestHSSEncodeGuard(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		typedef HSSPublicKey<HSS_PARAMS> PubKey;
+
+		HSSPrivateKey<HSS_PARAMS> priv;
+		PubKey pub;
+		bool pass = ExpectLMSEncodeReject(name, "default-constructed private", priv);
+		pass = ExpectLMSEncodeReject(name, "default-constructed public", pub) && pass;
+
+		priv.GenerateRandom(rng, g_nullNameValuePairs);
+		priv.MakePublicKey(pub);
+		ByteQueue pubQueue, privQueue;
+		pub.DEREncode(pubQueue);
+		priv.DEREncode(privQueue);
+		if (pubQueue.MaxRetrievable() == 0 || privQueue.MaxRetrievable() == 0) {
+			std::cout << "FAILED:  " << name << " set key encode" << std::endl;
+			pass = false;
+		}
+
+		static const struct { size_t offset; const char* label; } tamper[] = {
+			{ 3, "mismatched L" },
+			{ 7, "mismatched LMS typecode" },
+			{ 11, "mismatched LM-OTS typecode" },
+		};
+		for (size_t i = 0; i < COUNTOF(tamper); ++i) {
+			SecByteBlock tampered(pub.GetPublicKeyBytePtr(), PubKey::PUBLIC_KEY_SIZE);
+			tampered[tamper[i].offset] ^= 0x01;
+			PubKey bad;
+			bad.SetPublicKey(tampered, tampered.size());
+			pass = ExpectLMSEncodeReject(name, tamper[i].label, bad) && pass;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " encode guard rejection (5 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " encode guard rejection - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 bool ValidateLMS()
 {
 	std::cout << "\nLMS (SP 800-208) validation suite running...\n\n";
@@ -2017,6 +2366,22 @@ bool ValidateLMS()
 	pass = TestLMSSpkiEncode() && pass;
 	pass = TestLMSSpkiEncodeInvalid<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestStatefulPrivDecodeState<LMSPrivateKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> >(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestLMSPrivateEncodeGuard<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestStatefulUnsetKey<LMSPrivateKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>,
+		LMSPublicKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>,
+		LMSSigner<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> >(
+		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8", LMS_SHA256_M32_H5::TOTAL_LEAVES) && pass;
+	{
+		static const byte header[] = { 0, 0, 0, 5, 0, 0, 0, 4 };  // H5, W8
+		pass = TestStatefulDerFixtures<LMSPrivateKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>,
+			LMSPublicKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> >("LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8",
+			0x11, 0x22, "8837CF0FCE0E69910FE7B27F2B331BC2E9EE16FAC5E009E07AE272EB903B68BD",
+			0x33, header, sizeof(header),
+			"DEC692584D5916B1D02273BE4DADAE980A6922B0F20526199F52FDC0E97C5F63") && pass;
+	}
 	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H5_W8_L1_Params>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H10_W8_L1_Params>(
@@ -4815,6 +5180,24 @@ bool ValidateHSS()
 		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestHSSSerialization<HSS_SHA256_H5_W8_L2_Params>(
 		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestHSSPubDecodeState<HSS_SHA256_H5_W8_L2_Params>(
+		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestStatefulPrivDecodeState<HSSPrivateKey<HSS_SHA256_H5_W8_L2_Params> >(
+		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestHSSEncodeGuard<HSS_SHA256_H5_W8_L2_Params>(
+		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
+	pass = TestStatefulUnsetKey<HSSPrivateKey<HSS_SHA256_H5_W8_L2_Params>,
+		HSSPublicKey<HSS_SHA256_H5_W8_L2_Params>, HSSSigner<HSS_SHA256_H5_W8_L2_Params> >(
+		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8",
+		HSS_SHA256_H5_W8_L2_Params::TotalSignatures()) && pass;
+	{
+		static const byte header[] = { 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 4 };  // L=1, H5, W8
+		pass = TestStatefulDerFixtures<HSSPrivateKey<HSS_SHA256_H5_W8_L1_Params>,
+			HSSPublicKey<HSS_SHA256_H5_W8_L1_Params> >("HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8",
+			0x44, 0x55, "4EEB06BD224AC46C8F2D15FD816620B20AA5DA3D23239A0779E6FDB82850CCA2",
+			0x66, header, sizeof(header),
+			"EF7F3B2CA6E89B6EA1165458922B0195C289D82B5AC9FDFD1DC5B299E324EAA3") && pass;
+	}
 	pass = TestHSSRFCAppendixFTC1() && pass;
 	pass = TestHSSRFCAppendixFTC2() && pass;
 	pass = TestHSSMalformedSignatures() && pass;

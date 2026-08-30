@@ -9,6 +9,7 @@
 #include <cryptopp/osrng.h>
 #include <cryptopp/hex.h>
 #include <cryptopp/filters.h>
+#include <cryptopp/sha.h>
 
 #include <cryptopp/mlkem.h>
 #include <cryptopp/mldsa.h>
@@ -31,6 +32,287 @@
 
 NAMESPACE_BEGIN(CryptoPP)
 NAMESPACE_BEGIN(Test)
+
+// ******************** PQC key decode-state helpers ************************* //
+
+// Grow the outer SEQUENCE by one trailing NULL, so decoding parses the key
+// payload and then fails at the outer MessageEnd. Handles short and long-form
+// length, including a short form that no longer fits after the increment.
+static std::string DerWithTrailingElementInSequence(const std::string& der)
+{
+	CRYPTOPP_ASSERT(!der.empty() && static_cast<byte>(der[0]) == 0x30);
+	const size_t extra = 2;  // one NULL: 0x05 0x00
+	std::string out = der;
+	byte first = static_cast<byte>(out[1]);
+	if (first < 0x80) {
+		size_t newLen = static_cast<size_t>(first) + extra;
+		if (newLen < 0x80) {
+			out[1] = static_cast<char>(newLen);
+		}
+		else {
+			out[1] = static_cast<char>(0x81);  // promote to one-byte long form
+			out.insert(out.begin() + 2, static_cast<char>(newLen));
+		}
+	}
+	else {
+		size_t n = first & 0x7F;
+		size_t carry = extra;
+		for (size_t i = 1 + n; i > 1 && carry; --i) {
+			size_t v = static_cast<byte>(out[i]) + carry;
+			out[i] = static_cast<char>(v & 0xFF);
+			carry = v >> 8;
+		}
+		CRYPTOPP_ASSERT(carry == 0);  // +2 never widens a real key's length field
+	}
+	out.push_back(static_cast<char>(0x05));
+	out.push_back(static_cast<char>(0x00));
+	return out;
+}
+
+// Rejected decodes must leave an existing key unchanged. Valid decodes must
+// stop at the end of the object and leave trailing input unread.
+// aBytes is encoded; bBytes is the key state that must survive failure.
+template <class PubKey>
+static bool TestPqcPublicDecodeState(const char* name,
+	const byte* aBytes, const byte* bBytes, size_t len)
+{
+	try {
+		if (VerifyBufsEqual(aBytes, bBytes, len)) {
+			std::cout << "FAILED:  " << name << " public test keys A and B identical" << std::endl;
+			return false;
+		}
+
+		PubKey keyA;
+		keyA.SetPublicKey(aBytes, len);
+		std::string der;
+		StringSink sink(der);
+		keyA.Save(sink);
+
+		PubKey target;
+		target.SetPublicKey(bBytes, len);
+
+		bool pass = true;
+		bool rejected = false;
+		try {
+			std::string malformed = DerWithTrailingElementInSequence(der);
+			StringSource src(malformed, true);
+			target.Load(src);
+		}
+		catch (const BERDecodeErr&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " public malformed stream accepted" << std::endl;
+			pass = false;
+		}
+		if (!VerifyBufsEqual(target.GetPublicKeyBytePtr(), bBytes, len)) {
+			std::cout << "FAILED:  " << name << " public key changed after rejected decode" << std::endl;
+			pass = false;
+		}
+
+		std::string withTail = der + "TAIL";
+		PubKey key;
+		StringSource src2(withTail, true);
+		key.Load(src2);
+		if (!VerifyBufsEqual(key.GetPublicKeyBytePtr(), aBytes, len)) {
+			std::cout << "FAILED:  " << name << " public boundary decode mismatch" << std::endl;
+			pass = false;
+		}
+		byte tail[4];
+		if (src2.MaxRetrievable() != 4 || src2.Get(tail, 4) != 4 ||
+			!VerifyBufsEqual(tail, reinterpret_cast<const byte*>("TAIL"), 4)) {
+			std::cout << "FAILED:  " << name << " public trailing bytes consumed" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " public decode state (2 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " public decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+template <class PrivKey>
+static bool TestPqcPrivateDecodeState(const char* name,
+	const byte* aBytes, const byte* bBytes, size_t len)
+{
+	try {
+		if (VerifyBufsEqual(aBytes, bBytes, len)) {
+			std::cout << "FAILED:  " << name << " private test keys A and B identical" << std::endl;
+			return false;
+		}
+
+		PrivKey keyA;
+		keyA.SetPrivateKey(aBytes, len);
+		std::string der;
+		StringSink sink(der);
+		keyA.Save(sink);
+
+		PrivKey target;
+		target.SetPrivateKey(bBytes, len);
+		SecByteBlock targetPub(target.GetPublicKeyBytePtr(), target.GetPublicKeySize());
+
+		bool pass = true;
+		bool rejected = false;
+		try {
+			std::string malformed = DerWithTrailingElementInSequence(der);
+			StringSource src(malformed, true);
+			target.Load(src);
+		}
+		catch (const BERDecodeErr&) { rejected = true; }
+		if (!rejected) {
+			std::cout << "FAILED:  " << name << " private malformed stream accepted" << std::endl;
+			pass = false;
+		}
+		if (!VerifyBufsEqual(target.GetPrivateKeyBytePtr(), bBytes, len) ||
+			!VerifyBufsEqual(target.GetPublicKeyBytePtr(), targetPub, targetPub.size())) {
+			std::cout << "FAILED:  " << name << " private key changed after rejected decode" << std::endl;
+			pass = false;
+		}
+
+		std::string withTail = der + "TAIL";
+		PrivKey key;
+		StringSource src2(withTail, true);
+		key.Load(src2);
+		if (!VerifyBufsEqual(key.GetPrivateKeyBytePtr(), aBytes, len)) {
+			std::cout << "FAILED:  " << name << " private boundary decode mismatch" << std::endl;
+			pass = false;
+		}
+		byte tail[4];
+		if (src2.MaxRetrievable() != 4 || src2.Get(tail, 4) != 4 ||
+			!VerifyBufsEqual(tail, reinterpret_cast<const byte*>("TAIL"), 4)) {
+			std::cout << "FAILED:  " << name << " private trailing bytes consumed" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " private decode state (2 cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " private decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+// Encoding a key that was never set must throw InvalidArgument and write
+// nothing. Once a key is set, the same object must encode.
+template <class Key>
+static bool ExpectPqcEncodeReject(const char* name, const char* label, const Key& key)
+{
+	ByteQueue queue;
+	bool rejected = false;
+	try {
+		key.DEREncode(queue);
+	}
+	catch (const InvalidArgument&) {
+		rejected = true;
+	}
+	if (!rejected) {
+		std::cout << "FAILED:  " << name << " " << label << " encoded" << std::endl;
+		return false;
+	}
+	if (queue.MaxRetrievable() != 0) {
+		std::cout << "FAILED:  " << name << " " << label << " wrote output" << std::endl;
+		return false;
+	}
+	return true;
+}
+
+// zeroIsUnset: the family stores keys in fixed-size blocks and treats
+// all-zero material as unset, so the setters must not defeat the guard.
+template <class PARAMS, class PubKey, class PrivKey>
+static bool TestPqcEncodeGuard(const char* name, bool zeroIsUnset)
+{
+	AutoSeededRandomPool rng;
+	try {
+		PubKey pub;
+		PrivKey priv;
+		bool pass = ExpectPqcEncodeReject(name, "default public", pub);
+		pass = ExpectPqcEncodeReject(name, "default private", priv) && pass;
+		unsigned int cases = 2;
+
+		if (zeroIsUnset) {
+			SecByteBlock zeros;
+			zeros.CleanNew(PARAMS::PUBLIC_KEY_SIZE);
+			pub.SetPublicKey(zeros, zeros.size());
+			pass = ExpectPqcEncodeReject(name, "all-zero public", pub) && pass;
+			zeros.CleanNew(PARAMS::SECRET_KEY_SIZE);
+			priv.SetPrivateKey(zeros, zeros.size());
+			pass = ExpectPqcEncodeReject(name, "all-zero private", priv) && pass;
+			cases += 2;
+		}
+
+		priv.GenerateRandom(rng, g_nullNameValuePairs);
+		pub.SetPublicKey(priv.GetPublicKeyBytePtr(), PARAMS::PUBLIC_KEY_SIZE);
+		ByteQueue pubQueue, privQueue;
+		pub.DEREncode(pubQueue);
+		priv.DEREncode(privQueue);
+		if (pubQueue.MaxRetrievable() == 0 || privQueue.MaxRetrievable() == 0) {
+			std::cout << "FAILED:  " << name << " set key encode" << std::endl;
+			pass = false;
+		}
+
+		if (pass)
+			std::cout << "passed:  " << name << " unset-key encode rejection (" << cases << " cases)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " unset-key encode rejection - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+// Use deterministic key material to keep the DER digests reproducible.
+static void FillPattern(SecByteBlock& b, byte seed)
+{
+	for (size_t i = 0; i < b.size(); ++i)
+		b[i] = static_cast<byte>(seed + 3 * i);
+}
+
+template <class Key>
+static bool ExpectDerDigest(const char* name, const char* label, const Key& key,
+	const char* expected)
+{
+	std::string der, digest;
+	StringSink sink(der);
+	key.DEREncode(sink);
+	SHA256 hash;
+	StringSource(der, true, new HashFilter(hash, new HexEncoder(new StringSink(digest))));
+	if (digest != expected) {
+		std::cout << "FAILED:  " << name << " " << label << " DER digest " << digest << std::endl;
+		return false;
+	}
+	return true;
+}
+
+template <class PARAMS, class PubKey, class PrivKey>
+static bool TestPqcDerFixtures(const char* name, byte privSeed, const char* privDigest,
+	byte pubSeed, const char* pubDigest)
+{
+	try {
+		PrivKey priv;
+		SecByteBlock material(PARAMS::SECRET_KEY_SIZE);
+		FillPattern(material, privSeed);
+		priv.SetPrivateKey(material, material.size());
+		bool pass = ExpectDerDigest(name, "private", priv, privDigest);
+
+		PubKey pub;
+		material.New(PARAMS::PUBLIC_KEY_SIZE);
+		FillPattern(material, pubSeed);
+		pub.SetPublicKey(material, material.size());
+		pass = ExpectDerDigest(name, "public", pub, pubDigest) && pass;
+
+		if (pass)
+			std::cout << "passed:  " << name << " DER fixtures (2 keys)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " DER fixtures - " << e.what() << std::endl;
+		return false;
+	}
+}
 
 // ******************** ML-KEM Validation (FIPS 203) ************************* //
 
@@ -321,6 +603,27 @@ static bool TestMLKEMDecapsKAT()
 	return true;
 }
 
+template <class PARAMS>
+static bool TestMLKEMDecodeState(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		MLKEMDecapsulator<PARAMS> a(rng), b(rng);
+		bool pass = true;
+		pass = TestPqcPublicDecodeState<MLKEMPublicKey<PARAMS> >(name,
+			a.GetKey().GetPublicKeyBytePtr(), b.GetKey().GetPublicKeyBytePtr(),
+			PARAMS::PUBLIC_KEY_SIZE) && pass;
+		pass = TestPqcPrivateDecodeState<MLKEMPrivateKey<PARAMS> >(name,
+			a.GetKey().GetPrivateKeyBytePtr(), b.GetKey().GetPrivateKeyBytePtr(),
+			PARAMS::SECRET_KEY_SIZE) && pass;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 bool ValidateMLKEM()
 {
 	std::cout << "\nML-KEM (FIPS 203) validation suite running...\n\n";
@@ -346,6 +649,13 @@ bool ValidateMLKEM()
 
 	// ACVP known-answer vectors, covering the implicit-rejection path
 	pass = TestMLKEMDecapsKAT() && pass;
+
+	pass = TestMLKEMDecodeState<MLKEM_512>("ML-KEM-512") && pass;
+	pass = TestPqcEncodeGuard<MLKEM_512, MLKEMPublicKey<MLKEM_512>, MLKEMPrivateKey<MLKEM_512> >(
+		"ML-KEM-512", true) && pass;
+	pass = TestPqcDerFixtures<MLKEM_512, MLKEMPublicKey<MLKEM_512>, MLKEMPrivateKey<MLKEM_512> >("ML-KEM-512",
+		0x99, "444E0F29B287FF094184F0D3D35F72EE1E9B49844FB2228791A1AD0AD3663BD8",
+		0xaa, "6543C03D1B41D8D953760972D8230E53C81BFFACE194D07C560137D20AF10D48") && pass;
 
 	return pass;
 }
@@ -565,6 +875,27 @@ static bool TestMLDSAContext(const char* name)
 	}
 }
 
+template <class PARAMS>
+static bool TestMLDSADecodeState(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		MLDSASigner<PARAMS> a(rng), b(rng);
+		bool pass = true;
+		pass = TestPqcPublicDecodeState<MLDSAPublicKey<PARAMS> >(name,
+			a.GetKey().GetPublicKeyBytePtr(), b.GetKey().GetPublicKeyBytePtr(),
+			PARAMS::PUBLIC_KEY_SIZE) && pass;
+		pass = TestPqcPrivateDecodeState<MLDSAPrivateKey<PARAMS> >(name,
+			a.GetKey().GetPrivateKeyBytePtr(), b.GetKey().GetPrivateKeyBytePtr(),
+			PARAMS::SECRET_KEY_SIZE) && pass;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 bool ValidateMLDSA()
 {
 	std::cout << "\nML-DSA (FIPS 204) validation suite running...\n\n";
@@ -590,6 +921,13 @@ bool ValidateMLDSA()
 	pass = TestMLDSASignVerify<MLDSA_87>("ML-DSA-87") && pass;
 	pass = TestMLDSASerialization<MLDSA_87>("ML-DSA-87") && pass;
 	pass = TestMLDSASaveLoad<MLDSA_87>("ML-DSA-87") && pass;
+
+	pass = TestMLDSADecodeState<MLDSA_44>("ML-DSA-44") && pass;
+	pass = TestPqcEncodeGuard<MLDSA_44, MLDSAPublicKey<MLDSA_44>, MLDSAPrivateKey<MLDSA_44> >(
+		"ML-DSA-44", false) && pass;
+	pass = TestPqcDerFixtures<MLDSA_44, MLDSAPublicKey<MLDSA_44>, MLDSAPrivateKey<MLDSA_44> >("ML-DSA-44",
+		0x77, "7D22109CEF3717A65787BD69460EEC6F978413EF92A604BEF0CA8AFEFCE099FA",
+		0x88, "693E1FA426C9FE75B316AD56F2CBC3308219739A6AFBC2DB805D76D3575F8FDF") && pass;
 
 	return pass;
 }
@@ -982,6 +1320,27 @@ static bool TestSLHDSASigVerKAT()
 	return true;
 }
 
+template <class PARAMS>
+static bool TestSLHDSADecodeState(const char* name)
+{
+	AutoSeededRandomPool rng;
+	try {
+		SLHDSASigner<PARAMS> a(rng), b(rng);
+		bool pass = true;
+		pass = TestPqcPublicDecodeState<SLHDSAPublicKey<PARAMS> >(name,
+			a.GetKey().GetPublicKeyBytePtr(), b.GetKey().GetPublicKeyBytePtr(),
+			PARAMS::PUBLIC_KEY_SIZE) && pass;
+		pass = TestPqcPrivateDecodeState<SLHDSAPrivateKey<PARAMS> >(name,
+			a.GetKey().GetPrivateKeyBytePtr(), b.GetKey().GetPrivateKeyBytePtr(),
+			PARAMS::SECRET_KEY_SIZE) && pass;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " decode state - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 bool ValidateSLHDSA()
 {
 	std::cout << "\nSLH-DSA (FIPS 205) validation suite running...\n\n";
@@ -1013,6 +1372,13 @@ bool ValidateSLHDSA()
 	// Higher security-level size checks
 	pass = TestSLHDSAKeyGen<SLHDSA_SHA2_192f>("SLH-DSA-SHA2-192f") && pass;
 	pass = TestSLHDSAKeyGen<SLHDSA_SHA2_256f>("SLH-DSA-SHA2-256f") && pass;
+
+	pass = TestSLHDSADecodeState<SLHDSA_SHA2_128f>("SLH-DSA-SHA2-128f") && pass;
+	pass = TestPqcEncodeGuard<SLHDSA_SHA2_128f, SLHDSAPublicKey<SLHDSA_SHA2_128f>, SLHDSAPrivateKey<SLHDSA_SHA2_128f> >(
+		"SLH-DSA-SHA2-128f", true) && pass;
+	pass = TestPqcDerFixtures<SLHDSA_SHA2_128f, SLHDSAPublicKey<SLHDSA_SHA2_128f>, SLHDSAPrivateKey<SLHDSA_SHA2_128f> >("SLH-DSA-SHA2-128f",
+		0xbb, "77D041C07123CCEC0712990D7483BE51F68BA73CFDE9687316AE74577550B8D1",
+		0xcc, "CF8BE8CB315BB7D9C50AC16D6905D6AC6D6A7D12BF6E63BEF983D320972F2E47") && pass;
 
 	return pass;
 }

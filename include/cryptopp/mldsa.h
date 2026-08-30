@@ -215,6 +215,8 @@ struct MLDSAPrivateKey : public PrivateKey
 
     /// \brief DER encode the private key (PKCS#8 OneAsymmetricKey format)
     /// \param bt BufferedTransformation to write to
+    /// \details A key whose material is not at full size throws
+    ///  InvalidArgument before any output is written.
     void DEREncode(BufferedTransformation &bt) const;
 
     /// \brief BER decode the private key (PKCS#8 OneAsymmetricKey format)
@@ -279,6 +281,8 @@ struct MLDSAPublicKey : public PublicKey
 
     /// \brief DER encode the public key (X.509 SubjectPublicKeyInfo format)
     /// \param bt BufferedTransformation to write to
+    /// \details A key whose material is not at full size throws
+    ///  InvalidArgument before any output is written.
     void DEREncode(BufferedTransformation &bt) const;
 
     /// \brief BER decode the public key (X.509 SubjectPublicKeyInfo format)

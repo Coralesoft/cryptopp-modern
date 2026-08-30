@@ -385,6 +385,9 @@ public:
     const byte* GetRootLMSPublicKey() const { return m_pk.begin() + 4; }
 
     /// \brief DER encode (X.509 SubjectPublicKeyInfo, RFC 9802)
+    /// \details A key whose L field or root LMS/LM-OTS typecodes do not
+    ///  match HSS_PARAMS throws InvalidArgument before any output is
+    ///  written. This covers default-constructed keys.
     void DEREncode(BufferedTransformation &bt) const;
     void BERDecode(BufferedTransformation &bt);
     void Save(BufferedTransformation &bt) const override { DEREncode(bt); }
@@ -407,7 +410,7 @@ public:
     CRYPTOPP_CONSTANT(SEED_SIZE = HSS_PARAMS::template OTSParamsAt<0>::N);
     CRYPTOPP_CONSTANT(I_SIZE = 16);
 
-    HSSPrivateKey() : m_seed(SEED_SIZE), m_I(I_SIZE) {}
+    HSSPrivateKey() {}
     virtual ~HSSPrivateKey() = default;
 
     /// \brief Get the algorithm OID
@@ -422,7 +425,12 @@ public:
 
     void SetPrivateKey(const byte *seed, size_t seedLen,
                        const byte *identifier, size_t idLen);
+    /// \brief Get pointer to secret seed
+    /// \return pointer to SEED_SIZE bytes, or NULL until a key is set
     const byte* GetSeedBytePtr() const { return m_seed.begin(); }
+
+    /// \brief Get pointer to identifier I
+    /// \return pointer to I_SIZE bytes, or NULL until a key is set
     const byte* GetIdentifierBytePtr() const { return m_I.begin(); }
 
     /// \brief Compute the HSS public key
@@ -431,6 +439,8 @@ public:
     /// \brief Library PKCS#8 wrapping
     /// \details For cryptopp-modern persistence only. Not an RFC-defined
     ///  HSS private key format. Not portable across implementations.
+    ///  A key whose SEED or I is not at full size throws InvalidArgument
+    ///  before any output is written.
     void DEREncode(BufferedTransformation &bt) const;
     void BERDecode(BufferedTransformation &bt);
     void Save(BufferedTransformation &bt) const override { DEREncode(bt); }

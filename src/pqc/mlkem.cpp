@@ -881,6 +881,15 @@ void mlkem_decaps(byte *ss, const byte *ct, const byte *sk)
 
 using namespace MLKEM_Internal;
 
+// Fixed-size key storage uses all zero as the unset sentinel.
+static bool IsAllZero(const byte *p, size_t n)
+{
+    byte acc = 0;
+    for (size_t i = 0; i < n; ++i)
+        acc |= p[i];
+    return acc == 0;
+}
+
 // ******************** MLKEMPrivateKey ************************* //
 
 template <class PARAMS>
@@ -940,6 +949,9 @@ void MLKEMPrivateKey<PARAMS>::DEREncode(BufferedTransformation &bt) const
     //   privateKey                OCTET STRING,
     //   attributes            [0] IMPLICIT Attributes OPTIONAL,
     //   publicKey             [1] IMPLICIT PublicKey OPTIONAL }
+    if (IsAllZero(m_sk, SECRET_KEYLENGTH))
+        throw InvalidArgument("MLKEMPrivateKey: invalid private key");
+
     DERSequenceEncoder privateKeyInfo(bt);
         DEREncodeUnsigned<word32>(privateKeyInfo, 0);  // version
 
@@ -960,6 +972,8 @@ template <class PARAMS>
 void MLKEMPrivateKey<PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     // PKCS#8 OneAsymmetricKey format (RFC 5958)
+    SecByteBlock sk(SECRET_KEYLENGTH);
+
     BERSequenceDecoder privateKeyInfo(bt);
         word32 version;
         BERDecodeUnsigned<word32>(privateKeyInfo, version, INTEGER, 0, 1);
@@ -975,11 +989,13 @@ void MLKEMPrivateKey<PARAMS>::BERDecode(BufferedTransformation &bt)
                 if (!privateKey.IsDefiniteLength() ||
                     privateKey.RemainingLength() != SECRET_KEYLENGTH)
                     BERDecodeError();
-                privateKey.Get(m_sk.begin(), SECRET_KEYLENGTH);
+                privateKey.Get(sk.begin(), SECRET_KEYLENGTH);
             privateKey.MessageEnd();
         octetString.MessageEnd();
 
     privateKeyInfo.MessageEnd();
+
+    SetPrivateKey(sk.begin(), SECRET_KEYLENGTH);
 }
 
 // Explicit instantiations
@@ -1046,6 +1062,9 @@ void MLKEMPublicKey<PARAMS>::DEREncode(BufferedTransformation &bt) const
     // SubjectPublicKeyInfo  ::=  SEQUENCE  {
     //   algorithm            AlgorithmIdentifier,
     //   subjectPublicKey     BIT STRING  }
+    if (IsAllZero(m_pk, PUBLIC_KEYLENGTH))
+        throw InvalidArgument("MLKEMPublicKey: invalid public key");
+
     DERSequenceEncoder publicKeyInfo(bt);
         DERSequenceEncoder algorithm(publicKeyInfo);
             GetAlgorithmID().DEREncode(algorithm);
@@ -1059,6 +1078,8 @@ template <class PARAMS>
 void MLKEMPublicKey<PARAMS>::BERDecode(BufferedTransformation &bt)
 {
     // X.509 SubjectPublicKeyInfo format (RFC 5280)
+    SecByteBlock subjectPublicKey;
+
     BERSequenceDecoder publicKeyInfo(bt);
         BERSequenceDecoder algorithm(publicKeyInfo);
             OID oid(algorithm);
@@ -1066,14 +1087,14 @@ void MLKEMPublicKey<PARAMS>::BERDecode(BufferedTransformation &bt)
                 BERDecodeError();
         algorithm.MessageEnd();
 
-        SecByteBlock subjectPublicKey;
         unsigned int unusedBits;
         BERDecodeBitString(publicKeyInfo, subjectPublicKey, unusedBits);
         if (unusedBits != 0 || subjectPublicKey.size() != PUBLIC_KEYLENGTH)
             BERDecodeError();
-        std::memcpy(m_pk.begin(), subjectPublicKey.begin(), PUBLIC_KEYLENGTH);
 
     publicKeyInfo.MessageEnd();
+
+    SetPublicKey(subjectPublicKey.begin(), PUBLIC_KEYLENGTH);
 }
 
 // Explicit instantiations
