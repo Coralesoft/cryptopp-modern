@@ -2146,6 +2146,61 @@ static bool TestStatefulUnsetKey(const char* name, uint64_t leaves)
 	}
 }
 
+// Use deterministic key material to keep the DER digests reproducible.
+static void FillPattern(SecByteBlock& b, byte seed)
+{
+	for (size_t i = 0; i < b.size(); ++i)
+		b[i] = static_cast<byte>(seed + 3 * i);
+}
+
+template <class Key>
+static bool ExpectDerDigest(const char* name, const char* label, const Key& key,
+	const char* expected)
+{
+	std::string der, digest;
+	StringSink sink(der);
+	key.DEREncode(sink);
+	SHA256 hash;
+	StringSource(der, true, new HashFilter(hash, new HexEncoder(new StringSink(digest))));
+	if (digest != expected) {
+		std::cout << "FAILED:  " << name << " " << label << " DER digest " << digest << std::endl;
+		return false;
+	}
+	return true;
+}
+
+// header holds the typecode fields a public key must carry to encode:
+// LMS typecode || LM-OTS typecode for LMS, L || both typecodes for HSS.
+template <class PrivKey, class PubKey>
+static bool TestStatefulDerFixtures(const char* name, byte seedSeed, byte idSeed,
+	const char* privDigest, byte pubSeed, const byte* header, size_t headerLen,
+	const char* pubDigest)
+{
+	try {
+		PrivKey priv;
+		SecByteBlock seed(PrivKey::SEED_SIZE), id(PrivKey::I_SIZE);
+		FillPattern(seed, seedSeed);
+		FillPattern(id, idSeed);
+		priv.SetPrivateKey(seed, seed.size(), id, id.size());
+		bool pass = ExpectDerDigest(name, "private", priv, privDigest);
+
+		PubKey pub;
+		SecByteBlock material(PubKey::PUBLIC_KEY_SIZE);
+		FillPattern(material, pubSeed);
+		std::memcpy(material, header, headerLen);
+		pub.SetPublicKey(material, material.size());
+		pass = ExpectDerDigest(name, "public", pub, pubDigest) && pass;
+
+		if (pass)
+			std::cout << "passed:  " << name << " DER fixtures (2 keys)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " DER fixtures - " << e.what() << std::endl;
+		return false;
+	}
+}
+
 template <class HSS_PARAMS>
 static bool TestHSSPubDecodeState(const char* name)
 {
@@ -2319,6 +2374,14 @@ bool ValidateLMS()
 		LMSPublicKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>,
 		LMSSigner<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> >(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8", LMS_SHA256_M32_H5::TOTAL_LEAVES) && pass;
+	{
+		static const byte header[] = { 0, 0, 0, 5, 0, 0, 0, 4 };  // H5, W8
+		pass = TestStatefulDerFixtures<LMSPrivateKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8>,
+			LMSPublicKey<LMS_SHA256_M32_H5, LMOTS_SHA256_N32_W8> >("LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8",
+			0x11, 0x22, "8837CF0FCE0E69910FE7B27F2B331BC2E9EE16FAC5E009E07AE272EB903B68BD",
+			0x33, header, sizeof(header),
+			"DEC692584D5916B1D02273BE4DADAE980A6922B0F20526199F52FDC0E97C5F63") && pass;
+	}
 	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H5_W8_L1_Params>(
 		"LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8") && pass;
 	pass = TestLMSHSSL1SpkiEquivalence<HSS_SHA256_H10_W8_L1_Params>(
@@ -5127,6 +5190,14 @@ bool ValidateHSS()
 		HSSPublicKey<HSS_SHA256_H5_W8_L2_Params>, HSSSigner<HSS_SHA256_H5_W8_L2_Params> >(
 		"HSS[2]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8",
 		HSS_SHA256_H5_W8_L2_Params::TotalSignatures()) && pass;
+	{
+		static const byte header[] = { 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 4 };  // L=1, H5, W8
+		pass = TestStatefulDerFixtures<HSSPrivateKey<HSS_SHA256_H5_W8_L1_Params>,
+			HSSPublicKey<HSS_SHA256_H5_W8_L1_Params> >("HSS[1]/LMS-SHA256-M32-H5/LMOTS-SHA256-N32-W8",
+			0x44, 0x55, "4EEB06BD224AC46C8F2D15FD816620B20AA5DA3D23239A0779E6FDB82850CCA2",
+			0x66, header, sizeof(header),
+			"EF7F3B2CA6E89B6EA1165458922B0195C289D82B5AC9FDFD1DC5B299E324EAA3") && pass;
+	}
 	pass = TestHSSRFCAppendixFTC1() && pass;
 	pass = TestHSSRFCAppendixFTC2() && pass;
 	pass = TestHSSMalformedSignatures() && pass;

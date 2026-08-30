@@ -9,6 +9,7 @@
 #include <cryptopp/osrng.h>
 #include <cryptopp/hex.h>
 #include <cryptopp/filters.h>
+#include <cryptopp/sha.h>
 
 #include <cryptopp/mlkem.h>
 #include <cryptopp/mldsa.h>
@@ -259,6 +260,56 @@ static bool TestPqcEncodeGuard(const char* name, bool zeroIsUnset)
 	}
 	catch (const Exception& e) {
 		std::cout << "FAILED:  " << name << " unset-key encode rejection - " << e.what() << std::endl;
+		return false;
+	}
+}
+
+// Use deterministic key material to keep the DER digests reproducible.
+static void FillPattern(SecByteBlock& b, byte seed)
+{
+	for (size_t i = 0; i < b.size(); ++i)
+		b[i] = static_cast<byte>(seed + 3 * i);
+}
+
+template <class Key>
+static bool ExpectDerDigest(const char* name, const char* label, const Key& key,
+	const char* expected)
+{
+	std::string der, digest;
+	StringSink sink(der);
+	key.DEREncode(sink);
+	SHA256 hash;
+	StringSource(der, true, new HashFilter(hash, new HexEncoder(new StringSink(digest))));
+	if (digest != expected) {
+		std::cout << "FAILED:  " << name << " " << label << " DER digest " << digest << std::endl;
+		return false;
+	}
+	return true;
+}
+
+template <class PARAMS, class PubKey, class PrivKey>
+static bool TestPqcDerFixtures(const char* name, byte privSeed, const char* privDigest,
+	byte pubSeed, const char* pubDigest)
+{
+	try {
+		PrivKey priv;
+		SecByteBlock material(PARAMS::SECRET_KEY_SIZE);
+		FillPattern(material, privSeed);
+		priv.SetPrivateKey(material, material.size());
+		bool pass = ExpectDerDigest(name, "private", priv, privDigest);
+
+		PubKey pub;
+		material.New(PARAMS::PUBLIC_KEY_SIZE);
+		FillPattern(material, pubSeed);
+		pub.SetPublicKey(material, material.size());
+		pass = ExpectDerDigest(name, "public", pub, pubDigest) && pass;
+
+		if (pass)
+			std::cout << "passed:  " << name << " DER fixtures (2 keys)" << std::endl;
+		return pass;
+	}
+	catch (const Exception& e) {
+		std::cout << "FAILED:  " << name << " DER fixtures - " << e.what() << std::endl;
 		return false;
 	}
 }
@@ -602,6 +653,9 @@ bool ValidateMLKEM()
 	pass = TestMLKEMDecodeState<MLKEM_512>("ML-KEM-512") && pass;
 	pass = TestPqcEncodeGuard<MLKEM_512, MLKEMPublicKey<MLKEM_512>, MLKEMPrivateKey<MLKEM_512> >(
 		"ML-KEM-512", true) && pass;
+	pass = TestPqcDerFixtures<MLKEM_512, MLKEMPublicKey<MLKEM_512>, MLKEMPrivateKey<MLKEM_512> >("ML-KEM-512",
+		0x99, "444E0F29B287FF094184F0D3D35F72EE1E9B49844FB2228791A1AD0AD3663BD8",
+		0xaa, "6543C03D1B41D8D953760972D8230E53C81BFFACE194D07C560137D20AF10D48") && pass;
 
 	return pass;
 }
@@ -871,6 +925,9 @@ bool ValidateMLDSA()
 	pass = TestMLDSADecodeState<MLDSA_44>("ML-DSA-44") && pass;
 	pass = TestPqcEncodeGuard<MLDSA_44, MLDSAPublicKey<MLDSA_44>, MLDSAPrivateKey<MLDSA_44> >(
 		"ML-DSA-44", false) && pass;
+	pass = TestPqcDerFixtures<MLDSA_44, MLDSAPublicKey<MLDSA_44>, MLDSAPrivateKey<MLDSA_44> >("ML-DSA-44",
+		0x77, "7D22109CEF3717A65787BD69460EEC6F978413EF92A604BEF0CA8AFEFCE099FA",
+		0x88, "693E1FA426C9FE75B316AD56F2CBC3308219739A6AFBC2DB805D76D3575F8FDF") && pass;
 
 	return pass;
 }
@@ -1319,6 +1376,9 @@ bool ValidateSLHDSA()
 	pass = TestSLHDSADecodeState<SLHDSA_SHA2_128f>("SLH-DSA-SHA2-128f") && pass;
 	pass = TestPqcEncodeGuard<SLHDSA_SHA2_128f, SLHDSAPublicKey<SLHDSA_SHA2_128f>, SLHDSAPrivateKey<SLHDSA_SHA2_128f> >(
 		"SLH-DSA-SHA2-128f", true) && pass;
+	pass = TestPqcDerFixtures<SLHDSA_SHA2_128f, SLHDSAPublicKey<SLHDSA_SHA2_128f>, SLHDSAPrivateKey<SLHDSA_SHA2_128f> >("SLH-DSA-SHA2-128f",
+		0xbb, "77D041C07123CCEC0712990D7483BE51F68BA73CFDE9687316AE74577550B8D1",
+		0xcc, "CF8BE8CB315BB7D9C50AC16D6905D6AC6D6A7D12BF6E63BEF983D320972F2E47") && pass;
 
 	return pass;
 }
