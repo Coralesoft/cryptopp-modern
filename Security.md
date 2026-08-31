@@ -40,6 +40,16 @@ We will publish details after a fix is available.
 
 ## Security Advisories
 
+### Correction: PKCS#1 v1.5 depadding timing hardening (CVE-2023-50979)
+
+The PKCS#1 v1.5 depadding change shipped in 2025.11.0 removed the variable-time separator search. Some project documentation described that change as fixing the Marvin attack (CVE-2023-50979). That wording was broader than the change established and has been corrected.
+
+The change eliminated one source of data-dependent timing, but the plaintext copy length still depends on the separator position, so it did not make PKCS#1 v1.5 decryption constant-time or establish resistance to the attack.
+
+`RSAES-PKCS1-v1_5` remains available for compatibility with existing applications. In line with RFC 8017, new applications should use `RSAES-OAEP`. This is a scheme recommendation, not a timing-resistance claim.
+
+**Scope:** Documentation correction only. No implementation change.
+
 ### ASN.1 DERReencode unbounded recursion (fixed in 2026.5.2)
 
 `DERReencode` walked nested constructed indefinite BER without a depth limit. A crafted chain of `0x30 0x80` sequences could exhaust the thread stack. `PKCS8PrivateKey` import reaches this path through `BERDecodeOptionalAttributes`, so any caller that imports untrusted PKCS#8 material was exposed.

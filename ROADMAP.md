@@ -23,7 +23,7 @@
 - ✅ **BLAKE3 Cryptographic Hash** - Modern, fast hash function
 - ✅ **Argon2 Password Hashing** - RFC 9106 (Argon2d, Argon2i, Argon2id)
 - ✅ **Calendar Versioning** - Clear release dates (YEAR.MONTH.INCREMENT)
-- ✅ **Security Patches** - Marvin attack fix (CVE-2023-50979), ESIGN improvements
+- ✅ **Security Patches** - PKCS#1 v1.5 depadding timing hardening, ESIGN improvements
 - ✅ **Repository Setup** - GitHub repository with documentation
 - ✅ **Build System** - Working GNUmakefile builds
 
@@ -287,7 +287,7 @@ See [FORK.md](FORK.md) for project details and direction.
 - First release with calendar versioning
 - Added BLAKE3 cryptographic hash
 - Added Argon2 password hashing (d/i/id variants)
-- Fixed Marvin attack (CVE-2023-50979)
+- Added PKCS#1 v1.5 depadding timing hardening
 - Improved ESIGN static analyzer compatibility
 
 ---

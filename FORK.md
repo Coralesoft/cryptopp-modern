@@ -127,7 +127,7 @@
 - Added BLAKE3 cryptographic hash
 - Added Argon2 password hashing (RFC 9106)
 - Migrated to calendar versioning
-- Fixed Marvin attack (CVE-2023-50979)
+- Added PKCS#1 v1.5 depadding timing hardening: removes the variable-time separator search. This hardens one source of timing variation but does not establish resistance to the Marvin attack (CVE-2023-50979)
 - Improved ESIGN static analyzer compatibility
 
 ### Upstream Crypto++ Releases
@@ -191,7 +191,6 @@ This is a maintained fork to:
 | **XAES-256-GCM** | ❌ | ✅ C2SP spec |
 | **AES-CTR-HMAC** | ❌ | ✅ Encrypt-then-MAC |
 | **Post-Quantum** | ❌ | ✅ ML-KEM, ML-DSA, SLH-DSA, LMS/HSS, X-Wing |
-| **Marvin Fix** | ❌ | ✅ CVE-2023-50979 |
 | **CMake** | Basic | Modern (presets, find_package) |
 | **Organization** | Flat structure | Categorized src/ dirs |
 | **CI/CD** | Limited | 50+ configurations |
