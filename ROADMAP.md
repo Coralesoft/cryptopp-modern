@@ -1,6 +1,6 @@
 # cryptopp-modern Development Roadmap
 
-**Current Version:** 2026.8.1
+**Current Version:** 2026.9.0
 
 ---
 
@@ -23,7 +23,7 @@
 - ✅ **BLAKE3 Cryptographic Hash** - Modern, fast hash function
 - ✅ **Argon2 Password Hashing** - RFC 9106 (Argon2d, Argon2i, Argon2id)
 - ✅ **Calendar Versioning** - Clear release dates (YEAR.MONTH.INCREMENT)
-- ✅ **Security Patches** - Marvin attack fix (CVE-2023-50979), ESIGN improvements
+- ✅ **Security Patches** - PKCS#1 v1.5 depadding timing hardening, ESIGN improvements
 - ✅ **Repository Setup** - GitHub repository with documentation
 - ✅ **Build System** - Working GNUmakefile builds
 
@@ -184,6 +184,14 @@ See [FORK.md](FORK.md) for project details and direction.
 
 ## Version History
 
+### 2026.9.0 (September 2026) - PKCS#1 v1.5 Security Fix, RFC 9802 LMS Encoding
+- **PKCS#1 v1.5 security fix** - Heap buffer overflow in decryption of malformed ciphertexts, present since 2025.11.0 (GHSA-9g8r-h7q5-x8pc)
+- **RFC 9802 LMS encoding** - Standalone LMS public keys use the HSS L=1 SPKI form; single-level HSS parameter sets added (#75)
+- **PQC key hardening** - Transactional BER decoding and unset-key encode guards for ML-KEM, ML-DSA, SLH-DSA, LMS and HSS (#83); transactional ML-KEM key generation (#84)
+- **FileStateStore durability** - Parent-directory flush on state-file creation, POSIX (#78)
+- **Packaging** - `CRYPTOPP_INSTALL_CRYPTEST` (#76), absolute install dirs in pkg-config (#77)
+- **Warnings** - C++20 enum arithmetic (#80), BLAKE3 SIMD constants and x86 feature checks (#82), MSVC and Clang cleanups (#74)
+
 ### 2026.8.1 (August 2026) - BLAKE3 Multi-Chunk Hashing Fixes
 - **BLAKE3 multi-chunk** - Parent chaining-value byte order on big-endian targets, zero padding of partial final blocks, and an out-of-bounds read in the wide hashing paths (#65)
 - **DEFLATE HLIT** - Malformed streams could trigger an out-of-bounds write in the inflator (#67, weidai11/cryptopp#1368)
@@ -287,7 +295,7 @@ See [FORK.md](FORK.md) for project details and direction.
 - First release with calendar versioning
 - Added BLAKE3 cryptographic hash
 - Added Argon2 password hashing (d/i/id variants)
-- Fixed Marvin attack (CVE-2023-50979)
+- Added PKCS#1 v1.5 depadding timing hardening
 - Improved ESIGN static analyzer compatibility
 
 ---

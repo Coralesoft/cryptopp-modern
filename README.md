@@ -2,7 +2,7 @@
 
 **A maintained, modernized fork of Crypto++ with new algorithms and security improvements**
 
-[![Version](https://img.shields.io/badge/version-2026.8.1-blue.svg)](https://github.com/cryptopp-modern/cryptopp-modern/releases)
+[![Version](https://img.shields.io/badge/version-2026.9.0-blue.svg)](https://github.com/cryptopp-modern/cryptopp-modern/releases)
 [![License](https://img.shields.io/badge/license-Boost-green.svg)](LICENSE)
 
 ---
@@ -16,7 +16,7 @@
 - **Post-Quantum Cryptography** - ML-KEM (FIPS 203), ML-DSA (FIPS 204), SLH-DSA (FIPS 205), LMS/HSS (SP 800-208), X-Wing hybrid KEM
 - **BLAKE3** - Modern, fast cryptographic hash function
 - **Argon2** - RFC 9106 password hashing (Argon2d, Argon2i, Argon2id)
-- **Security Patches** - Marvin attack fix (CVE-2023-50979), fault injection fix (CVE-2024-28285), F(2^m) and Rabin/ModularSquareRoot hardening (CVE-2023-50980, CVE-2023-50981), ESIGN improvements
+- **Security Patches** - PKCS#1 v1.5 depadding timing hardening, fault injection fix (CVE-2024-28285), F(2^m) and Rabin/ModularSquareRoot hardening (CVE-2023-50980, CVE-2023-50981), ESIGN improvements
 - **Calendar Versioning** - Clear release dates (YEAR.MONTH.INCREMENT format)
 - **Active Maintenance** - Regular updates and improvements
 - **Crypto++ Compatibility** - Uses the same `CryptoPP` namespace and preserves most existing APIs
@@ -24,7 +24,15 @@
 ---
 
 
-## What's New in 2026.8.1
+## What's New in 2026.9.0
+
+- **PKCS#1 v1.5 security fix** - Decrypting a malformed ciphertext could write up to nine bytes past the output buffer; affects 2025.11.0 through 2026.8.1 (GHSA-9g8r-h7q5-x8pc).
+- **RFC 9802 LMS encoding** - Standalone LMS public keys now encode in the RFC 9802 SubjectPublicKeyInfo form, with keys saved by earlier releases still loading; single-level HSS parameter sets pair with them (#75).
+- **PQC key hardening** - A failed BER decode leaves the key unchanged, unset keys refuse to encode (#83), and ML-KEM key generation is transactional (#84).
+- **FileStateStore durability** - The parent directory is flushed when a state file is created on POSIX systems (#78).
+- **Packaging** - `CRYPTOPP_INSTALL_CRYPTEST` installs the `cryptest` tool and its data (#76); pkg-config output handles absolute install directories (#77).
+
+### Previously in 2026.8.1
 
 - **BLAKE3 multi-chunk fixes** - Parent chaining-value byte order on big-endian targets, zero padding of partial final blocks, and an out-of-bounds read in the wide hashing paths (#65). Digests over 1024 bytes from earlier releases may be incorrect; see the release notes.
 - **DEFLATE HLIT rejection** - A malformed stream could trigger an out-of-bounds write in the inflator (#67, weidai11/cryptopp#1368).
@@ -36,12 +44,6 @@
 - **Mixed-parameter HSS** - Per-level LMS/LM-OTS parameters, `HSS_SHA256_H10W4_H5W8_L2`, LM-OTS W1/W2/W4 (#56). Source break for direct `HSS_Params` users; named typedefs and wire formats unchanged.
 - **ChaCha SIMD fix** - Counter carry in the NEON, SSE2, and Altivec backends (weidai11/cryptopp#1362).
 - **Input validation** - BLAKE3 public inputs checked at runtime (#57), zero-length AEAD tags rejected (#58), zero PBKDF iterations rejected (#59).
-
-### Previously in 2026.7.x
-
-- **2026.7.1 packaging** - CMake/pkg-config install locations (#47), `libcryptopp.pc` alias (#51), `.tar.gz` releases (#49), and the release-signing key (#46).
-- **2026.7.0 SLH-DSA interface** - Added FIPS 205 external pure signatures. SLH-DSA signatures from 2026.3.0 through 2026.6.0 use the internal message form and are not interoperable with the external-interface format introduced in 2026.7.0.
-- **Stateful-signing hardening** - Added one-time-key safety checks for LMS/HSS.
 
 ---
 

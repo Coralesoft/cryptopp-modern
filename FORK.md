@@ -26,6 +26,16 @@
 
 ### cryptopp-modern Releases
 
+**2026.9.0** (September 2026) - PKCS#1 v1.5 Security Fix, RFC 9802 LMS Encoding (Minor)
+- Fixed a heap buffer overflow in PKCS#1 v1.5 decryption; a malformed ciphertext could write up to nine bytes past the output buffer, present since 2025.11.0 (GHSA-9g8r-h7q5-x8pc)
+- Rejected undersized PKCS#1 v1.5 encryption blocks before unpadding
+- Encoded standalone LMS public keys in the RFC 9802 SubjectPublicKeyInfo form; both the RFC form and the earlier wrapping are accepted on decode, and single-level HSS parameter sets (`HSS_SHA256_H5_W8_L1`, `HSS_SHA256_H10_W8_L1`) use the same public-key encoding as the corresponding LMS sets (#75)
+- Made PQC key BER decoding transactional and refused to encode unset keys across ML-KEM, ML-DSA, SLH-DSA, LMS and HSS (#83); ML-KEM key generation now leaves the existing key unchanged on failure (#84)
+- Rejected undersized OAEP blocks before unpadding (#72, weidai11/cryptopp#1370)
+- Flushed the parent directory when `FileStateStore` creates a state file on POSIX systems (#78)
+- Added `CRYPTOPP_INSTALL_CRYPTEST` with a corrected compiled-in data path (#76) and absolute-install-dir handling in pkg-config output (#77)
+- Cleaned up C++20 enum arithmetic (#80), BLAKE3 SIMD constant guards and x86 feature checks (#82), and MSVC and Clang warnings with new ML-KEM ACVP decapsulation vectors (#74)
+
 **2026.8.1** (August 2026) - BLAKE3 Multi-Chunk Hashing Fixes (Patch)
 - Fixed three defects in BLAKE3 multi-chunk hashing: parent chaining values serialised in native byte order (wrong digests over 1024 bytes on big-endian targets), partial final blocks left unpadded (digests could depend on uninitialised stack contents on any architecture), and an out-of-bounds read in the SSE4.1, AVX2 and AVX512 paths for single-call `Update` lengths at power-of-two chunk counts (#65)
 - Rejected invalid DEFLATE HLIT values; a malformed stream could trigger an out-of-bounds write in the inflator (#67, weidai11/cryptopp#1368)
@@ -127,7 +137,7 @@
 - Added BLAKE3 cryptographic hash
 - Added Argon2 password hashing (RFC 9106)
 - Migrated to calendar versioning
-- Fixed Marvin attack (CVE-2023-50979)
+- Added PKCS#1 v1.5 depadding timing hardening: removes the variable-time separator search. This hardens one source of timing variation but does not establish resistance to the Marvin attack (CVE-2023-50979)
 - Improved ESIGN static analyzer compatibility
 
 ### Upstream Crypto++ Releases
@@ -182,16 +192,15 @@ This is a maintained fork to:
 
 ### cryptopp-modern vs. Upstream Crypto++
 
-| Aspect | Crypto++ 8.9.0 | cryptopp-modern 2026.8.1 |
+| Aspect | Crypto++ 8.9.0 | cryptopp-modern 2026.9.0 |
 |--------|----------------|---------------------------|
-| **Last Release** | October 1, 2023 | August 2026 |
-| **Versioning** | Semantic (8.9.0) | Calendar (2026.8.1) |
+| **Last Release** | October 1, 2023 | September 2026 |
+| **Versioning** | Semantic (8.9.0) | Calendar (2026.9.0) |
 | **BLAKE3** | ❌ | ✅ with AVX-512 (over 4000 MiB/s) |
 | **Argon2** | ❌ | ✅ RFC 9106 |
 | **XAES-256-GCM** | ❌ | ✅ C2SP spec |
 | **AES-CTR-HMAC** | ❌ | ✅ Encrypt-then-MAC |
 | **Post-Quantum** | ❌ | ✅ ML-KEM, ML-DSA, SLH-DSA, LMS/HSS, X-Wing |
-| **Marvin Fix** | ❌ | ✅ CVE-2023-50979 |
 | **CMake** | Basic | Modern (presets, find_package) |
 | **Organization** | Flat structure | Categorized src/ dirs |
 | **CI/CD** | Limited | 50+ configurations |
@@ -220,6 +229,6 @@ This is a maintained fork to:
 
 ---
 
-**Last Updated:** 2026-08-05
+**Last Updated:** 2026-08-31
 **Fork Point:** Crypto++ 8.9.0 (commit 60f81a77)
-**Current Version:** 2026.8.1
+**Current Version:** 2026.9.0

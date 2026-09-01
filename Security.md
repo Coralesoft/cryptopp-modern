@@ -3,7 +3,7 @@
 ## Supported Versions
 
 Currently supported:
-- 2026.8.1 (current release)
+- 2026.9.0 (current release)
 
 Older releases are not actively supported. Users on earlier versions should upgrade to receive security fixes. We incorporate critical security fixes from upstream Crypto++ and monitor for security issues in the cryptographic algorithms we implement.
 
@@ -21,8 +21,8 @@ Check the fingerprint, import the key, then verify the archive:
 ```sh
 gpg --show-keys --with-fingerprint KEYS
 gpg --import KEYS
-gpg --verify cryptopp-modern-2026.8.1.zip.sig cryptopp-modern-2026.8.1.zip
-gpg --verify cryptopp-modern-2026.8.1.tar.gz.sig cryptopp-modern-2026.8.1.tar.gz
+gpg --verify cryptopp-modern-2026.9.0.zip.sig cryptopp-modern-2026.9.0.zip
+gpg --verify cryptopp-modern-2026.9.0.tar.gz.sig cryptopp-modern-2026.9.0.tar.gz
 ```
 
 Make sure the fingerprint matches the value above before trusting the archive.
@@ -39,6 +39,28 @@ If we receive a report of a security-related bug then we will:
 We will publish details after a fix is available.
 
 ## Security Advisories
+
+### PKCS#1 v1.5 decryption heap buffer overflow (fixed in 2026.9.0)
+
+When decrypting a malformed ciphertext, `PKCS_EncryptionPaddingScheme::Unpad` copied the recovered message into the caller's buffer without bounding the copy by the buffer size, so up to nine attacker-influenced bytes could be written past the end. It is reachable through the normal `RSAES<PKCS1v15>::Decryptor::Decrypt` API, and an attacker holding the public key can trigger it deterministically.
+
+**Severity:** CVSS 3.1 5.3 Medium. Availability impact; no confidentiality or integrity impact established.
+
+**Affected versions:** 2025.11.0 through 2026.8.1. Fork-local; upstream Crypto++ is not affected.
+
+**Fix:** `Unpad` now bounds the recovered-message copy by the caller's buffer, and undersized encryption blocks are rejected before unpadding.
+
+**Advisory:** GHSA-9g8r-h7q5-x8pc. A CVE has been requested and will be added to the advisory when assigned.
+
+### Correction: PKCS#1 v1.5 depadding timing hardening (CVE-2023-50979)
+
+The PKCS#1 v1.5 depadding change shipped in 2025.11.0 removed the variable-time separator search. Some project documentation described that change as fixing the Marvin attack (CVE-2023-50979). That wording was broader than the change established and has been corrected.
+
+The change eliminated one source of data-dependent timing, but the plaintext copy length still depends on the separator position, so it did not make PKCS#1 v1.5 decryption constant-time or establish resistance to the attack.
+
+`RSAES-PKCS1-v1_5` remains available for compatibility with existing applications. In line with RFC 8017, new applications should use `RSAES-OAEP`. This is a scheme recommendation, not a timing-resistance claim.
+
+**Scope:** Documentation correction only. No implementation change.
 
 ### ASN.1 DERReencode unbounded recursion (fixed in 2026.5.2)
 

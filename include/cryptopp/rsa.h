@@ -202,11 +202,17 @@ struct RSASS_ISO : public TF_SS<RSA_ISO, P1363_EMSA2, H>
 };
 
 /// \brief \ref RSAES<STANDARD> "RSAES<PKCS1v15>::Decryptor" typedef
-/// \details RSA encryption scheme defined in PKCS #1 v2.0
+/// \details RSA encryption scheme defined in PKCS #1 v2.0. Retained for
+///  compatibility with existing applications. This PKCS#1 v1.5 decryptor is
+///  not claimed to be constant-time or resistant to the Marvin attack
+///  (CVE-2023-50979). In line with RFC 8017, new applications should use
+///  RSAES_OAEP_SHA256_Decryptor.
 /// \since Crypto++ 1.0
 DOCUMENTED_TYPEDEF(RSAES<PKCS1v15>::Decryptor, RSAES_PKCS1v15_Decryptor);
 /// \brief \ref RSAES<STANDARD> "RSAES<PKCS1v15>::Encryptor" typedef
-/// \details RSA encryption scheme defined in PKCS #1 v2.0
+/// \details RSA encryption scheme defined in PKCS #1 v2.0. Retained for
+///  compatibility with existing applications. In line with RFC 8017, new
+///  applications should use RSAES_OAEP_SHA256_Encryptor.
 /// \since Crypto++ 1.0
 DOCUMENTED_TYPEDEF(RSAES<PKCS1v15>::Encryptor, RSAES_PKCS1v15_Encryptor);
 
