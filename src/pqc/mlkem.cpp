@@ -853,7 +853,7 @@ void mlkem_decaps(byte *ss, const byte *ct, const byte *sk)
     for (unsigned int i = 0; i < InternalParams::CIPHERTEXTBYTES; i++)
         fail |= ct[i] ^ cmp[i];
     // Branchless normalization: 0 stays 0, non-zero becomes 1
-    fail = (fail | (0u - fail)) >> 31;
+    fail = (fail | (0u - fail)) >> (sizeof(fail) * 8 - 1);
 
     // FIPS 203: Implicit rejection K_bar = J(z || c) = SHAKE-256(z || c)
     byte k_bar[MLKEM_SYMBYTES];
