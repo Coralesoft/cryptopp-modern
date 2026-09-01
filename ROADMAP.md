@@ -1,6 +1,6 @@
 # cryptopp-modern Development Roadmap
 
-**Current Version:** 2026.8.1
+**Current Version:** 2026.9.0
 
 ---
 
@@ -183,6 +183,13 @@ See [FORK.md](FORK.md) for project details and direction.
 ---
 
 ## Version History
+
+### 2026.9.0 (September 2026) - RFC 9802 LMS Encoding and PQC Key Hardening
+- **RFC 9802 LMS encoding** - Standalone LMS public keys use the HSS L=1 SPKI form; single-level HSS parameter sets added (#75)
+- **PQC key hardening** - Transactional BER decoding and unset-key encode guards for ML-KEM, ML-DSA, SLH-DSA, LMS and HSS (#83); transactional ML-KEM key generation (#84)
+- **FileStateStore durability** - Parent-directory flush on state-file creation, POSIX (#78)
+- **Packaging** - `CRYPTOPP_INSTALL_CRYPTEST` (#76), absolute install dirs in pkg-config (#77)
+- **Warnings** - C++20 enum arithmetic (#80), BLAKE3 SIMD constants and x86 feature checks (#82), MSVC and Clang cleanups (#74)
 
 ### 2026.8.1 (August 2026) - BLAKE3 Multi-Chunk Hashing Fixes
 - **BLAKE3 multi-chunk** - Parent chaining-value byte order on big-endian targets, zero padding of partial final blocks, and an out-of-bounds read in the wide hashing paths (#65)

@@ -1,5 +1,5 @@
 cryptopp-modern: Maintained Fork of the Crypto++ Library
-Version 2026.8.1 - August 2026
+Version 2026.9.0 - September 2026
 
 cryptopp-modern is an actively maintained fork of the Crypto++ library,
 a free C++ class library of cryptographic schemes. The library contains
@@ -308,6 +308,29 @@ documentation is one of the highest returns on investment.
 
 The items in this section comprise the most recent history. Please see History.txt
 for the record back to Crypto++ 1.0.
+
+2026.9.0 - September 2026
+      - minor release (RFC 9802 LMS encoding, PQC key hardening)
+      - correction: some documentation described the PKCS#1 v1.5 depadding
+        timing hardening in 2025.11.0 as fixing the Marvin attack
+        (CVE-2023-50979). It removed the variable-time separator search but
+        did not establish resistance to the attack
+      - encoded standalone LMS public keys in the RFC 9802 SPKI form (PR 75)
+        * both the RFC form and the earlier wrapping are accepted on decode
+        * added single-level HSS parameter sets using the same public-key
+          encoding as LMS
+      - made PQC key BER decoding transactional and refused to encode
+        unset keys (PR 83)
+        * ML-KEM, ML-DSA, SLH-DSA, LMS and HSS; rebuild required for the
+          constructor-dependent guards
+      - kept ML-KEM keys unchanged when key generation fails partway (PR 84)
+      - rejected undersized OAEP blocks (PR 72, upstream issue 1370)
+      - flushed the parent directory on FileStateStore file creation (PR 78)
+      - added CRYPTOPP_INSTALL_CRYPTEST and fixed the compiled-in data path (PR 76)
+      - handled absolute install directories in pkg-config output (PR 77)
+      - avoided deprecated enum arithmetic under C++20 (issue 79, PR 80)
+      - guarded BLAKE3 SIMD constants and fixed x86 feature checks (issue 81, PR 82)
+      - cleaned up MSVC and Clang warnings, added ML-KEM ACVP decapsulation vectors (PR 74)
 
 2026.8.1 - August 2026
       - patch release (BLAKE3 multi-chunk hashing fixes)
