@@ -184,7 +184,8 @@ See [FORK.md](FORK.md) for project details and direction.
 
 ## Version History
 
-### 2026.9.0 (September 2026) - RFC 9802 LMS Encoding and PQC Key Hardening
+### 2026.9.0 (September 2026) - PKCS#1 v1.5 Security Fix, RFC 9802 LMS Encoding
+- **PKCS#1 v1.5 security fix** - Heap buffer overflow in decryption of malformed ciphertexts, present since 2025.11.0 (GHSA-9g8r-h7q5-x8pc)
 - **RFC 9802 LMS encoding** - Standalone LMS public keys use the HSS L=1 SPKI form; single-level HSS parameter sets added (#75)
 - **PQC key hardening** - Transactional BER decoding and unset-key encode guards for ML-KEM, ML-DSA, SLH-DSA, LMS and HSS (#83); transactional ML-KEM key generation (#84)
 - **FileStateStore durability** - Parent-directory flush on state-file creation, POSIX (#78)

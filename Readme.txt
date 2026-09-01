@@ -310,7 +310,13 @@ The items in this section comprise the most recent history. Please see History.t
 for the record back to Crypto++ 1.0.
 
 2026.9.0 - September 2026
-      - minor release (RFC 9802 LMS encoding, PQC key hardening)
+      - minor release (PKCS#1 v1.5 security fix, RFC 9802 LMS encoding,
+        single-level HSS)
+      - fixed a heap overflow in PKCS#1 v1.5 unpadding (GHSA-9g8r-h7q5-x8pc)
+        * a chosen ciphertext could write up to nine bytes past the output
+          buffer
+        * affected versions: 2025.11.0 through 2026.8.1
+      - rejected undersized PKCS#1 v1.5 encryption blocks before unpadding
       - correction: some documentation described the PKCS#1 v1.5 depadding
         timing hardening in 2025.11.0 as fixing the Marvin attack
         (CVE-2023-50979). It removed the variable-time separator search but

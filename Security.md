@@ -40,6 +40,18 @@ We will publish details after a fix is available.
 
 ## Security Advisories
 
+### PKCS#1 v1.5 decryption heap buffer overflow (fixed in 2026.9.0)
+
+When decrypting a malformed ciphertext, `PKCS_EncryptionPaddingScheme::Unpad` copied the recovered message into the caller's buffer without bounding the copy by the buffer size, so up to nine attacker-influenced bytes could be written past the end. It is reachable through the normal `RSAES<PKCS1v15>::Decryptor::Decrypt` API, and an attacker holding the public key can trigger it deterministically.
+
+**Severity:** CVSS 3.1 5.3 Medium. Availability impact; no confidentiality or integrity impact established.
+
+**Affected versions:** 2025.11.0 through 2026.8.1. Fork-local; upstream Crypto++ is not affected.
+
+**Fix:** `Unpad` now bounds the recovered-message copy by the caller's buffer, and undersized encryption blocks are rejected before unpadding.
+
+**Advisory:** GHSA-9g8r-h7q5-x8pc. A CVE has been requested and will be added to the advisory when assigned.
+
 ### Correction: PKCS#1 v1.5 depadding timing hardening (CVE-2023-50979)
 
 The PKCS#1 v1.5 depadding change shipped in 2025.11.0 removed the variable-time separator search. Some project documentation described that change as fixing the Marvin attack (CVE-2023-50979). That wording was broader than the change established and has been corrected.

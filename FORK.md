@@ -26,7 +26,9 @@
 
 ### cryptopp-modern Releases
 
-**2026.9.0** (September 2026) - RFC 9802 LMS Encoding and PQC Key Hardening (Minor)
+**2026.9.0** (September 2026) - PKCS#1 v1.5 Security Fix, RFC 9802 LMS Encoding (Minor)
+- Fixed a heap buffer overflow in PKCS#1 v1.5 decryption; a malformed ciphertext could write up to nine bytes past the output buffer, present since 2025.11.0 (GHSA-9g8r-h7q5-x8pc)
+- Rejected undersized PKCS#1 v1.5 encryption blocks before unpadding
 - Encoded standalone LMS public keys in the RFC 9802 SubjectPublicKeyInfo form; both the RFC form and the earlier wrapping are accepted on decode, and single-level HSS parameter sets (`HSS_SHA256_H5_W8_L1`, `HSS_SHA256_H10_W8_L1`) use the same public-key encoding as the corresponding LMS sets (#75)
 - Made PQC key BER decoding transactional and refused to encode unset keys across ML-KEM, ML-DSA, SLH-DSA, LMS and HSS (#83); ML-KEM key generation now leaves the existing key unchanged on failure (#84)
 - Rejected undersized OAEP blocks before unpadding (#72, weidai11/cryptopp#1370)

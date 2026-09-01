@@ -26,6 +26,7 @@
 
 ## What's New in 2026.9.0
 
+- **PKCS#1 v1.5 security fix** - Decrypting a malformed ciphertext could write up to nine bytes past the output buffer; affects 2025.11.0 through 2026.8.1 (GHSA-9g8r-h7q5-x8pc).
 - **RFC 9802 LMS encoding** - Standalone LMS public keys now encode in the RFC 9802 SubjectPublicKeyInfo form, with keys saved by earlier releases still loading; single-level HSS parameter sets pair with them (#75).
 - **PQC key hardening** - A failed BER decode leaves the key unchanged, unset keys refuse to encode (#83), and ML-KEM key generation is transactional (#84).
 - **FileStateStore durability** - The parent directory is flushed when a state file is created on POSIX systems (#78).
