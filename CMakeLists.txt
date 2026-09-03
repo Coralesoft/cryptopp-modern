@@ -60,12 +60,6 @@ message(STATUS "=> Project : ${PROJECT_NAME} v${cryptopp-modern_VERSION}")
 # Settable options
 # ============================================================================
 
-option(
-    CRYPTOPP_USE_INTERMEDIATE_OBJECTS_TARGET
-    "Use a common intermediate objects target for the static and shared library targets"
-    ON
-)
-
 if(CRYPTOPP_INCLUDE_PREFIX)
     set(CRYPTOPP_INCLUDE_PREFIX
         ${CRYPTOPP_INCLUDE_PREFIX}
@@ -203,11 +197,6 @@ include(CheckCXXCompilerFlag)
 # Test programs directory
 set(TEST_PROG_DIR ${cryptopp_SOURCE_DIR}/TestPrograms)
 set(TEST_CXX_FILE ${TEST_PROG_DIR}/test_cxx.cpp)
-
-# https://github.com/noloader/cryptopp-cmake/issues/56
-if(CMAKE_GENERATOR STREQUAL Xcode)
-    set(CRYPTOPP_USE_INTERMEDIATE_OBJECTS_TARGET OFF)
-endif()
 
 # ============================================================================
 # Compiler options
