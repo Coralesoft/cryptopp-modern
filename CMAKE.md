@@ -95,10 +95,13 @@ cmake --build --preset=debug
 | `CRYPTOPP_INSTALL` | `ON` | Generate install targets |
 | `CRYPTOPP_INSTALL_CRYPTEST` | `CRYPTOPP_BUILD_TESTING` | Install cryptest.exe with its TestData and TestVectors. Set explicitly to install cryptest without the test suite, or to run the suite without installing cryptest |
 | `CRYPTOPP_BUILD_SHARED` | `OFF` | Build a shared library (Unix-like platforms only; not supported on Windows) |
+| `CRYPTOPP_BUILD_STATIC` | `NOT CRYPTOPP_BUILD_SHARED` | Build a static library. Enable together with `CRYPTOPP_BUILD_SHARED` to build both in one pass |
 | `CRYPTOPP_USE_OPENMP` | `OFF` | Enable OpenMP for parallel algorithms |
 | `CRYPTOPP_INCLUDE_PREFIX` | `cryptopp` | Header installation directory name |
 
 `CRYPTOPP_INSTALL_CRYPTEST` takes its default from `CRYPTOPP_BUILD_TESTING` on the first configure of a build directory. Like all CMake options the value is then cached, so changing `CRYPTOPP_BUILD_TESTING` in an existing build directory does not re-derive it; set it explicitly or start from a fresh build directory. Installing cryptest also requires `CRYPTOPP_INSTALL` (which is `ON` by default).
+
+`CRYPTOPP_BUILD_STATIC` defaults the same way from `CRYPTOPP_BUILD_SHARED`, with the same caching caveat: turning `CRYPTOPP_BUILD_SHARED` on in an existing build directory leaves the cached `CRYPTOPP_BUILD_STATIC=ON` in place and yields both libraries; start from a fresh build directory or set both options explicitly. At least one of the two must be enabled, and disabling both fails at configure time.
 
 ### x86/x64 SIMD Options
 
@@ -157,6 +160,14 @@ Windows remains static-only; requesting a shared build there fails at configure 
 
 Unix shared builds compile with default symbol visibility, so the full API is exported. When tests are enabled, cryptest links against the shared library and the validation suite runs against it.
 
+To build the shared and static libraries in one pass:
+
+```bash
+cmake -B build -DCRYPTOPP_BUILD_SHARED=ON -DCRYPTOPP_BUILD_STATIC=ON
+```
+
+The sources are compiled once per library, and the install contains both libraries and both CMake export files: the same layout that two separate configure passes produce. cryptest links the shared library in this mode.
+
 ### SONAME and ABI version
 
 The SONAME carries an ABI version that is independent of the calendar release version. It comes from the `CRYPTOPP_ABI_VERSION` macro in `include/cryptopp/config_ver.h`, is read by both the CMake and GNUmakefile builds, and increments only for ABI-incompatible changes. On Linux the installed files look like:
@@ -198,11 +209,13 @@ cmake --build build
 
 ### Component Selection
 
-You can explicitly request static or shared components (though only static is currently supported):
+You can explicitly request the static or shared library, which is the reliable way to pick one from an install that provides both:
 
 ```cmake
 find_package(cryptopp-modern REQUIRED COMPONENTS static)
 ```
+
+The two components are mutually exclusive within one `find_package` call. Without a component, the selection follows `cryptopp_SHARED_LIBS` if set, then `BUILD_SHARED_LIBS`, then whichever library the install provides (static preferred). Either way the imported target is `cryptopp::cryptopp`, and the first `find_package` call in a scope decides its type.
 
 ## Installation
 
