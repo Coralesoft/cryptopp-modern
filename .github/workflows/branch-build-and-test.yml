@@ -383,6 +383,88 @@ jobs:
         test "$MK_SONAME" = "libcryptopp.so.$ABI" \
           || { echo "ERROR: GNUmakefile SONAME $MK_SONAME != libcryptopp.so.$ABI"; exit 1; }
 
+  cmake-dual:
+    name: CMake Dual Shared and Static Test
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install Ninja
+      run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+    - name: Configure (shared and static in one pass)
+      run: >
+        cmake -S . -B build/dual -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DCRYPTOPP_BUILD_SHARED=ON
+        -DCRYPTOPP_BUILD_STATIC=ON
+        -DCRYPTOPP_BUILD_TESTING=ON
+        -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/build/dual-install
+
+    - name: Build
+      run: cmake --build build/dual -j"$(nproc)"
+
+    - name: Validate against the shared primary
+      run: |
+        cd build/dual
+        LD_LIBRARY_PATH="$PWD" ./cryptest.exe v
+
+    - name: Install and verify both libraries and export files
+      run: |
+        INST="${{ github.workspace }}/build/dual-install"
+        cmake --install build/dual
+        find "$INST" -name 'libcryptopp.a' | grep -q . \
+          || { echo "ERROR: static archive not installed"; exit 1; }
+        find "$INST" -name 'libcryptopp.so.*' -type f | grep -q . \
+          || { echo "ERROR: shared library not installed"; exit 1; }
+        CMAKEDIR=$(dirname "$(find "$INST" -name cryptopp-modernConfig.cmake | head -1)")
+        test -f "$CMAKEDIR/cryptopp-modern-shared-targets.cmake" \
+          || { echo "ERROR: shared export file not installed"; exit 1; }
+        test -f "$CMAKEDIR/cryptopp-modern-static-targets.cmake" \
+          || { echo "ERROR: static export file not installed"; exit 1; }
+
+    - name: Build and run one consumer per component
+      run: |
+        INST="${{ github.workspace }}/build/dual-install"
+        LIBDIR=$(dirname "$(find "$INST" -name 'libcryptopp.so.*' -type f | head -1)")
+        mkdir -p dualc && cd dualc
+        cat > consumer.cpp << 'EOF'
+        #include <cryptopp/sha.h>
+        #include <cryptopp/cryptlib.h>
+        #include <vector>
+        using namespace CryptoPP;
+        int main() {
+            const byte msg[3] = {'a','b','c'};
+            SHA256 sha; std::vector<byte> d(sha.DigestSize());
+            sha.CalculateDigest(d.data(), msg, 3);
+            return d[0] == 0xba ? 0 : 1;  // digest of "abc"
+        }
+        EOF
+        cat > CMakeLists.txt << 'EOF'
+        cmake_minimum_required(VERSION 3.20)
+        project(consumer CXX)
+        set(CMAKE_CXX_STANDARD 11)
+        set(CMAKE_CXX_STANDARD_REQUIRED ON)
+        find_package(cryptopp-modern REQUIRED COMPONENTS ${CRYPTOPP_COMPONENT})
+        add_executable(consumer consumer.cpp)
+        target_link_libraries(consumer PRIVATE cryptopp::cryptopp)
+        EOF
+        # The static consumer must not record a NEEDED entry for the library;
+        # the shared consumer must.
+        cmake -S . -B c-static -DCMAKE_PREFIX_PATH="$INST" -DCRYPTOPP_COMPONENT=static > /dev/null
+        cmake --build c-static > /dev/null
+        if readelf -d c-static/consumer | grep -qE 'NEEDED.*libcryptopp'; then
+          echo "ERROR: static-component consumer linked the shared library"; exit 1
+        fi
+        ./c-static/consumer
+        cmake -S . -B c-shared -DCMAKE_PREFIX_PATH="$INST" -DCRYPTOPP_COMPONENT=shared > /dev/null
+        cmake --build c-shared > /dev/null
+        readelf -d c-shared/consumer | grep -qE 'NEEDED.*libcryptopp' \
+          || { echo "ERROR: shared-component consumer is not linked against the shared library"; exit 1; }
+        LD_LIBRARY_PATH="$LIBDIR" ./c-shared/consumer
+        echo "dual install consumers OK"
+
   makefile-macos-dylib:
     name: Makefile macOS dylib
     runs-on: macos-latest

@@ -60,12 +60,6 @@ message(STATUS "=> Project : ${PROJECT_NAME} v${cryptopp-modern_VERSION}")
 # Settable options
 # ============================================================================
 
-option(
-    CRYPTOPP_USE_INTERMEDIATE_OBJECTS_TARGET
-    "Use a common intermediate objects target for the static and shared library targets"
-    ON
-)
-
 if(CRYPTOPP_INCLUDE_PREFIX)
     set(CRYPTOPP_INCLUDE_PREFIX
         ${CRYPTOPP_INCLUDE_PREFIX}
@@ -131,6 +125,26 @@ if(CRYPTOPP_BUILD_SHARED AND WIN32)
         "Shared (DLL) builds are not supported on Windows. The old DLL was the "
         "FIPS one, which is abandoned. Build a static library on Windows, or "
         "build shared on a non-Windows target."
+    )
+endif()
+
+# The static default follows the shared option so clean configurations keep
+# producing a single library: default gives static only, shared-only stays
+# shared only. Setting both ON builds both libraries in one pass.
+if(CRYPTOPP_BUILD_SHARED)
+    set(CRYPTOPP_DEFAULT_BUILD_STATIC OFF)
+else()
+    set(CRYPTOPP_DEFAULT_BUILD_STATIC ON)
+endif()
+option(CRYPTOPP_BUILD_STATIC
+    "Build static library"
+    "${CRYPTOPP_DEFAULT_BUILD_STATIC}"
+)
+if(NOT CRYPTOPP_BUILD_SHARED AND NOT CRYPTOPP_BUILD_STATIC)
+    message(
+        FATAL_ERROR
+        "At least one of CRYPTOPP_BUILD_SHARED or CRYPTOPP_BUILD_STATIC must "
+        "be enabled"
     )
 endif()
 
@@ -203,11 +217,6 @@ include(CheckCXXCompilerFlag)
 # Test programs directory
 set(TEST_PROG_DIR ${cryptopp_SOURCE_DIR}/TestPrograms)
 set(TEST_CXX_FILE ${TEST_PROG_DIR}/test_cxx.cpp)
-
-# https://github.com/noloader/cryptopp-cmake/issues/56
-if(CMAKE_GENERATOR STREQUAL Xcode)
-    set(CRYPTOPP_USE_INTERMEDIATE_OBJECTS_TARGET OFF)
-endif()
 
 # ============================================================================
 # Compiler options
@@ -1410,6 +1419,21 @@ list(APPEND cryptopp_LIBRARY_SOURCES ${cryptopp_SOURCES})
 
 add_library(cryptopp ${cryptopp_LIBRARY_SOURCES})
 add_library(cryptopp::cryptopp ALIAS cryptopp)
+set(cryptopp_LIBRARY_TARGETS cryptopp)
+
+# In a dual build the primary target stays the shared library and the sources
+# are compiled a second time for the static archive. One object set cannot
+# serve both: the shared library exports through default visibility (GH #64)
+# while the static archive keeps the project-wide hidden preset.
+if(CRYPTOPP_BUILD_SHARED AND CRYPTOPP_BUILD_STATIC)
+    add_library(cryptopp-static STATIC ${cryptopp_LIBRARY_SOURCES})
+    set_target_properties(cryptopp-static PROPERTIES
+        OUTPUT_NAME cryptopp
+        EXPORT_NAME cryptopp
+    )
+    list(APPEND cryptopp_LIBRARY_TARGETS cryptopp-static)
+endif()
+
 # VERSION is the release version (full filename, macOS current_version).
 # SOVERSION is the ABI version (SONAME, macOS compatibility_version).
 set_target_properties(
@@ -1418,7 +1442,10 @@ set_target_properties(
         VERSION ${cryptopp-modern_VERSION}
         SOVERSION ${CRYPTOPP_ABI_VERSION}
 )
-set_target_properties(cryptopp PROPERTIES LINKER_LANGUAGE CXX)
+set_target_properties(
+    ${cryptopp_LIBRARY_TARGETS}
+    PROPERTIES LINKER_LANGUAGE CXX
+)
 # CRYPTOPP_EXPORTS belongs to the legacy Windows DLL machinery and is
 # deliberately not defined for Unix shared builds, which export through
 # default visibility.
@@ -1431,29 +1458,34 @@ if(CRYPTOPP_BUILD_SHARED AND NOT WIN32)
         VISIBILITY_INLINES_HIDDEN OFF
     )
 endif()
-target_compile_definitions(
-    cryptopp
-    INTERFACE
-        $<INSTALL_INTERFACE:CRYPTOPP_INCLUDE_PREFIX=${CRYPTOPP_INCLUDE_PREFIX}>
-        ${CRYPTOPP_COMPILE_DEFINITIONS}
-)
+foreach(cryptopp_target IN LISTS cryptopp_LIBRARY_TARGETS)
+    target_compile_definitions(
+        ${cryptopp_target}
+        INTERFACE
+            $<INSTALL_INTERFACE:CRYPTOPP_INCLUDE_PREFIX=${CRYPTOPP_INCLUDE_PREFIX}>
+            ${CRYPTOPP_COMPILE_DEFINITIONS}
+    )
 
-target_include_directories(
-    cryptopp
-    PUBLIC
-        $<BUILD_INTERFACE:${cryptopp_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-)
+    target_include_directories(
+        ${cryptopp_target}
+        PUBLIC
+            $<BUILD_INTERFACE:${cryptopp_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "SunPro")
-    target_link_options(cryptopp PRIVATE ${CRYPTOPP_SUN_LDFLAGS})
-endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "SunPro")
+        target_link_options(${cryptopp_target} PRIVATE ${CRYPTOPP_SUN_LDFLAGS})
+    endif()
+endforeach()
 
 # ============================================================================
 # Static linking (recommended for portability)
 # ============================================================================
 
-# For MinGW/GCC, link statically to avoid runtime DLL dependencies
+# For MinGW/GCC, link statically to avoid runtime DLL dependencies.
+# The Windows-only blocks here and below configure just the primary target:
+# shared and dual builds are rejected on Windows at configure time, so
+# cryptopp-static never exists on this platform.
 if(MINGW OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND WIN32))
     # Static link libgcc, libstdc++, and pthreads
     target_link_options(cryptopp PRIVATE
@@ -1478,7 +1510,9 @@ if(MINGW)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     target_link_libraries(cryptopp ${CMAKE_THREAD_LIBS_INIT} -static -lpthread)
 else()
-    target_link_libraries(cryptopp ${CMAKE_THREAD_LIBS_INIT})
+    foreach(cryptopp_target IN LISTS cryptopp_LIBRARY_TARGETS)
+        target_link_libraries(${cryptopp_target} ${CMAKE_THREAD_LIBS_INIT})
+    endforeach()
 endif()
 
 # ============================================================================
@@ -1492,10 +1526,12 @@ if(CRYPTOPP_USE_OPENMP)
     find_package(OpenMP REQUIRED)
 endif()
 
-target_link_libraries(
-    cryptopp
-    $<$<BOOL:${CRYPTOPP_USE_OPENMP}>:OpenMP::OpenMP_CXX>
-)
+foreach(cryptopp_target IN LISTS cryptopp_LIBRARY_TARGETS)
+    target_link_libraries(
+        ${cryptopp_target}
+        $<$<BOOL:${CRYPTOPP_USE_OPENMP}>:OpenMP::OpenMP_CXX>
+    )
+endforeach()
 
 # ============================================================================
 # Tests
@@ -1603,36 +1639,43 @@ if(CRYPTOPP_INSTALL)
     include(ConfigFiles)
     create_module_config_files()
 
-    install(
-        TARGETS cryptopp
-        EXPORT ${TARGETS_EXPORT_NAME}
-        RUNTIME
-        COMPONENT ${runtime}
-        LIBRARY
-        COMPONENT ${runtime}
-        ARCHIVE
-        COMPONENT ${dev}
-    )
+    # Each library target installs into its own export set, so a dual build
+    # produces both cryptopp-modern-shared-targets.cmake and
+    # cryptopp-modern-static-targets.cmake in one prefix, the same layout the
+    # two-pass build installs today.
+    foreach(cryptopp_target IN LISTS cryptopp_LIBRARY_TARGETS)
+        get_target_property(cryptopp_target_type ${cryptopp_target} TYPE)
+        if(cryptopp_target_type STREQUAL "SHARED_LIBRARY")
+            set(type shared)
+        else()
+            set(type static)
+        endif()
+
+        install(
+            TARGETS ${cryptopp_target}
+            EXPORT ${TARGETS_EXPORT_NAME}_${type}
+            RUNTIME
+            COMPONENT ${runtime}
+            LIBRARY
+            COMPONENT ${runtime}
+            ARCHIVE
+            COMPONENT ${dev}
+        )
+
+        install(
+            EXPORT ${TARGETS_EXPORT_NAME}_${type}
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/cryptopp-modern"
+            NAMESPACE cryptopp::
+            FILE cryptopp-modern-${type}-targets.cmake
+            COMPONENT ${dev}
+        )
+    endforeach()
 
     # Header files
     install(
         FILES ${cryptopp_HEADERS}
         COMPONENT ${dev}
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${CRYPTOPP_INCLUDE_PREFIX}"
-    )
-
-    if(CRYPTOPP_BUILD_SHARED)
-        set(type shared)
-    else()
-        set(type static)
-    endif()
-
-    install(
-        EXPORT ${TARGETS_EXPORT_NAME}
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/cryptopp-modern"
-        NAMESPACE cryptopp::
-        FILE cryptopp-modern-${type}-targets.cmake
-        COMPONENT ${dev}
     )
 
     # Package configuration files
@@ -1704,4 +1747,12 @@ message(
     STATUS
     "[cryptopp-modern] Compiler options: ${CMAKE_CXX_FLAGS} ${CRYPTOPP_COMPILE_OPTIONS} ${CRYPTOPP_MSVC_COMPILE_OPTIONS}"
 )
+set(cryptopp_LIBRARY_TYPES)
+if(CRYPTOPP_BUILD_STATIC)
+    list(APPEND cryptopp_LIBRARY_TYPES static)
+endif()
+if(CRYPTOPP_BUILD_SHARED)
+    list(APPEND cryptopp_LIBRARY_TYPES shared)
+endif()
+message(STATUS "[cryptopp-modern] Libraries: ${cryptopp_LIBRARY_TYPES}")
 message(STATUS "[cryptopp-modern] Build type: ${CMAKE_BUILD_TYPE}")
