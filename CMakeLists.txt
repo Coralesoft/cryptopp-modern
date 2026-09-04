@@ -340,14 +340,15 @@ endfunction(check_compile_link_option)
 
 # ##############################################################################
 
+include(TargetArch)
+target_architecture(CRYPTOPP_TARGET_ARCH)
+string(TOLOWER "${CRYPTOPP_TARGET_ARCH}" CRYPTOPP_TARGET_ARCH)
+
 function(check_target_architecture output pattern)
-    include(TargetArch)
-    target_architecture(target_arch)
-    string(TOLOWER ${target_arch} target_arch)
-    if("${target_arch}" MATCHES ${pattern})
+    if("${CRYPTOPP_TARGET_ARCH}" MATCHES "${pattern}")
         message(
             STATUS
-            "[cryptopp-modern] Target architecture detected as: ${target_arch} -> ${output}"
+            "[cryptopp-modern] Target architecture detected as: ${CRYPTOPP_TARGET_ARCH} -> ${output}"
         )
         set(${output} TRUE PARENT_SCOPE)
     else()
