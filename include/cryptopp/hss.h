@@ -285,8 +285,8 @@ struct HSS_Params
     }
 
     /// \brief Algorithm name
-    /// \details Uniform configurations keep the HSS[L]/<lms>/<ots> form. Mixed
-    ///  configurations list each level: HSS[L]/(<l0>,<l1>,...).
+    /// \details Uniform configurations keep the HSS[L]/{lms}/{ots} form. Mixed
+    ///  configurations list each level: HSS[L]/({l0},{l1},...).
     static std::string StaticAlgorithmName()
     {
         std::vector<std::string> names;
