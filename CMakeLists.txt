@@ -118,13 +118,26 @@ option(CRYPTOPP_INSTALL "Generate the install target for this project." ON)
 # Windows DLL builds are not supported. The old DLL was the FIPS one, which is
 # abandoned, and its hand-maintained export set is gone. Shared builds are
 # allowed on Unix-like platforms, where the library exports the full API.
-option(CRYPTOPP_BUILD_SHARED "Build shared library" OFF)
+#
+# The default follows BUILD_SHARED_LIBS when the caller defined it, so the
+# standard variable selects the library type on its own. An explicit
+# CRYPTOPP_BUILD_SHARED still takes precedence.
+set(CRYPTOPP_DEFAULT_BUILD_SHARED OFF)
+if(DEFINED BUILD_SHARED_LIBS)
+    set(CRYPTOPP_DEFAULT_BUILD_SHARED "${BUILD_SHARED_LIBS}")
+endif()
+option(CRYPTOPP_BUILD_SHARED
+    "Build shared library"
+    "${CRYPTOPP_DEFAULT_BUILD_SHARED}"
+)
 if(CRYPTOPP_BUILD_SHARED AND WIN32)
     message(
         FATAL_ERROR
         "Shared (DLL) builds are not supported on Windows. The old DLL was the "
         "FIPS one, which is abandoned. Build a static library on Windows, or "
-        "build shared on a non-Windows target."
+        "build shared on a non-Windows target. BUILD_SHARED_LIBS=ON also "
+        "selects a shared build; set CRYPTOPP_BUILD_SHARED=OFF to keep the "
+        "library static when BUILD_SHARED_LIBS is on for other targets."
     )
 endif()
 

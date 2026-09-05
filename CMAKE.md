@@ -94,12 +94,14 @@ cmake --build --preset=debug
 | `CRYPTOPP_BUILD_TESTING` | `ON` | Build the test executable (cryptest.exe) and register the CTest suite |
 | `CRYPTOPP_INSTALL` | `ON` | Generate install targets |
 | `CRYPTOPP_INSTALL_CRYPTEST` | `CRYPTOPP_BUILD_TESTING` | Install cryptest.exe with its TestData and TestVectors. Set explicitly to install cryptest without the test suite, or to run the suite without installing cryptest |
-| `CRYPTOPP_BUILD_SHARED` | `OFF` | Build a shared library (Unix-like platforms only; not supported on Windows) |
+| `CRYPTOPP_BUILD_SHARED` | `BUILD_SHARED_LIBS` if defined, else `OFF` | Build a shared library (Unix-like platforms only; not supported on Windows) |
 | `CRYPTOPP_BUILD_STATIC` | `NOT CRYPTOPP_BUILD_SHARED` | Build a static library. Enable together with `CRYPTOPP_BUILD_SHARED` to build both in one pass |
 | `CRYPTOPP_USE_OPENMP` | `OFF` | Enable OpenMP for parallel algorithms |
 | `CRYPTOPP_INCLUDE_PREFIX` | `cryptopp` | Header installation directory name |
 
 `CRYPTOPP_INSTALL_CRYPTEST` takes its default from `CRYPTOPP_BUILD_TESTING` on the first configure of a build directory. Like all CMake options the value is then cached, so changing `CRYPTOPP_BUILD_TESTING` in an existing build directory does not re-derive it; set it explicitly or start from a fresh build directory. Installing cryptest also requires `CRYPTOPP_INSTALL` (which is `ON` by default).
+
+`CRYPTOPP_BUILD_SHARED` takes its default from the standard `BUILD_SHARED_LIBS` variable when that is defined, so `-DBUILD_SHARED_LIBS=ON` on its own builds the shared library, with the same first-configure caching. An explicit `CRYPTOPP_BUILD_SHARED` takes precedence, which lets a project that sets `BUILD_SHARED_LIBS` for its own targets keep this library static. Building both libraries still requires `CRYPTOPP_BUILD_STATIC=ON` alongside either shared selector.
 
 `CRYPTOPP_BUILD_STATIC` defaults the same way from `CRYPTOPP_BUILD_SHARED`, with the same caching caveat: turning `CRYPTOPP_BUILD_SHARED` on in an existing build directory leaves the cached `CRYPTOPP_BUILD_STATIC=ON` in place and yields both libraries; start from a fresh build directory or set both options explicitly. At least one of the two must be enabled, and disabling both fails at configure time.
 
@@ -156,7 +158,7 @@ cmake -B build -DCRYPTOPP_BUILD_SHARED=ON
 cmake --build build
 ```
 
-Windows remains static-only; requesting a shared build there fails at configure time. The old Windows DLL was the FIPS module, which is abandoned, and its hand-maintained export set is gone.
+Windows remains static-only; `CRYPTOPP_BUILD_SHARED=ON` or `BUILD_SHARED_LIBS=ON` fails at configure time. The old Windows DLL was the FIPS module, which is abandoned, and its hand-maintained export set is gone.
 
 Unix shared builds compile with default symbol visibility, so the full API is exported. When tests are enabled, cryptest links against the shared library and the validation suite runs against it.
 

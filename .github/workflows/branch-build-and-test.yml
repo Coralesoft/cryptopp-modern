@@ -465,6 +465,54 @@ jobs:
         LD_LIBRARY_PATH="$LIBDIR" ./c-shared/consumer
         echo "dual install consumers OK"
 
+  cmake-build-shared-libs:
+    name: CMake BUILD_SHARED_LIBS Test
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install Ninja
+      run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+    - name: Configure (BUILD_SHARED_LIBS only, tests on)
+      run: >
+        cmake -S . -B build/bsl -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DBUILD_SHARED_LIBS=ON
+        -DCRYPTOPP_BUILD_TESTING=ON
+        -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/build/bsl-install
+
+    - name: Build
+      run: cmake --build build/bsl -j"$(nproc)"
+
+    - name: Validate against the shared library
+      run: |
+        cd build/bsl
+        LD_LIBRARY_PATH="$PWD" ./cryptest.exe v
+
+    - name: Install and verify the library type
+      run: |
+        # The standard variable alone must select the shared library. The
+        # SONAME, symlink and consumer checks live in the cmake-shared lane.
+        INST="${{ github.workspace }}/build/bsl-install"
+        cmake --install build/bsl
+        find "$INST" -name 'libcryptopp.so.*' -type f | grep -q . \
+          || { echo "ERROR: shared library not installed"; exit 1; }
+        if find "$INST" -name 'libcryptopp.a' | grep -q .; then
+          echo "ERROR: static archive installed with BUILD_SHARED_LIBS=ON"; exit 1
+        fi
+
+    - name: Check precedence (configure only)
+      run: |
+        # An explicit CRYPTOPP_BUILD_SHARED wins over BUILD_SHARED_LIBS, and a
+        # defined-but-OFF BUILD_SHARED_LIBS keeps the static default.
+        cmake -S . -B build/prec-off -G Ninja -DCRYPTOPP_BUILD_TESTING=OFF           -DBUILD_SHARED_LIBS=ON -DCRYPTOPP_BUILD_SHARED=OFF > /dev/null
+        grep -q '^CRYPTOPP_BUILD_SHARED:BOOL=OFF$' build/prec-off/CMakeCache.txt           || { echo "ERROR: explicit CRYPTOPP_BUILD_SHARED=OFF did not win"; exit 1; }
+        cmake -S . -B build/prec-bsl-off -G Ninja -DCRYPTOPP_BUILD_TESTING=OFF           -DBUILD_SHARED_LIBS=OFF > /dev/null
+        grep -q '^CRYPTOPP_BUILD_SHARED:BOOL=OFF$' build/prec-bsl-off/CMakeCache.txt           || { echo "ERROR: BUILD_SHARED_LIBS=OFF did not keep the static default"; exit 1; }
+        echo "precedence OK"
+
   makefile-macos-dylib:
     name: Makefile macOS dylib
     runs-on: macos-latest
