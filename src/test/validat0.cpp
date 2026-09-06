@@ -420,7 +420,51 @@ bool TestCompressors()
 
     // **************************************************************
 
-    return !fail1 && !fail2 && !fail3;
+    // Crafted dynamic blocks holding only an end-of-block symbol. RFC 1951
+    // limits HLIT to 29; 30 and 31 must be rejected. HLIT 29 with HDIST 31
+    // is the legal maximum and must still decode. See GH #1368.
+    bool fail4 = false;
+
+    static const byte hlit30[] = {
+        0xf5,0xff,0x81,0x08,0x00,0x00,0x00,0x00,0x20,0xec,0x4f,0xbd,0xc9,0x9b,0x04};
+    static const byte hlit31[] = {
+        0xfd,0xff,0x81,0x08,0x00,0x00,0x00,0x00,0x20,0xec,0x4f,0x3d,0xca,0x9b,0x04};
+    static const byte hlit29[] = {
+        0xed,0xff,0x81,0x08,0x00,0x00,0x00,0x00,0x20,0xec,0x4f,0x3d,0xc9,0x9b,0x04};
+
+    try {
+        std::string rec;
+        ArraySource(hlit30, sizeof(hlit30), true, new Inflator(new StringSink(rec)));
+        fail4 = true;
+    }
+    catch (const Inflator::BadBlockErr&) {}
+    catch (const Exception&) { fail4 = true; }
+
+    try {
+        std::string rec;
+        ArraySource(hlit31, sizeof(hlit31), true, new Inflator(new StringSink(rec)));
+        fail4 = true;
+    }
+    catch (const Inflator::BadBlockErr&) {}
+    catch (const Exception&) { fail4 = true; }
+
+    try {
+        std::string rec;
+        ArraySource(hlit29, sizeof(hlit29), true, new Inflator(new StringSink(rec)));
+        if (!rec.empty())
+            fail4 = true;
+    }
+    catch (const Exception&) { fail4 = true; }
+
+    if (!fail4)
+        std::cout << "passed:";
+    else
+        std::cout << "FAILED:";
+    std::cout << "  inflate dynamic block header bounds" << std::endl;
+
+    // **************************************************************
+
+    return !fail1 && !fail2 && !fail3 && !fail4;
 }
 
 bool TestEncryptors()
