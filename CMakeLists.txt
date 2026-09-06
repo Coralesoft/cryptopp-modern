@@ -226,6 +226,7 @@ if(
 endif()
 
 include(CheckCXXCompilerFlag)
+include(GNUInstallDirs)
 
 # Test programs directory
 set(TEST_PROG_DIR ${cryptopp_SOURCE_DIR}/TestPrograms)
@@ -1485,7 +1486,7 @@ foreach(cryptopp_target IN LISTS cryptopp_LIBRARY_TARGETS)
         ${cryptopp_target}
         PUBLIC
             $<BUILD_INTERFACE:${cryptopp_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
 
     if(CMAKE_CXX_COMPILER_ID STREQUAL "SunPro")
@@ -1551,9 +1552,6 @@ endforeach()
 # ============================================================================
 # Tests
 # ============================================================================
-
-# CRYPTOPP_DATA_DIR below depends on CMAKE_INSTALL_FULL_DATAROOTDIR.
-include(GNUInstallDirs)
 
 if(
     CRYPTOPP_BUILD_TESTING
