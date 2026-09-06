@@ -490,6 +490,34 @@ jobs:
         LD_LIBRARY_PATH="$LIBDIR" ./c-shared/consumer
         echo "dual install consumers OK"
 
+    - name: Install with split prefixes and run one consumer per component
+      run: |
+        # Libraries under prefix A, headers under prefix B, so A/include does not
+        # exist. The exported include directory must follow CMAKE_INSTALL_INCLUDEDIR.
+        # The prefixes sit outside the checkout: CMake rejects an exported include
+        # directory that lies inside the source tree.
+        A="$RUNNER_TEMP/split-a"
+        B="$RUNNER_TEMP/split-b"
+        cmake -S . -B build/dual-split -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCRYPTOPP_BUILD_SHARED=ON \
+          -DCRYPTOPP_BUILD_STATIC=ON \
+          -DCRYPTOPP_BUILD_TESTING=OFF \
+          -DCMAKE_INSTALL_PREFIX="$A" \
+          -DCMAKE_INSTALL_LIBDIR="$A/lib" \
+          -DCMAKE_INSTALL_INCLUDEDIR="$B/include" > /dev/null
+        cmake --build build/dual-split -j"$(nproc)" > /dev/null
+        cmake --install build/dual-split > /dev/null
+        test ! -e "$A/include" || { echo "ERROR: headers installed under the library prefix"; exit 1; }
+        test -f "$B/include/cryptopp/cryptlib.h" || { echo "ERROR: headers not installed under the include prefix"; exit 1; }
+        cd dualc
+        for comp in static shared; do
+          cmake -S . -B "s-$comp" -DCMAKE_PREFIX_PATH="$A;$B" -DCRYPTOPP_COMPONENT=$comp > /dev/null
+          cmake --build "s-$comp" > /dev/null
+          LD_LIBRARY_PATH="$A/lib" "./s-$comp/consumer"
+        done
+        echo "split-prefix consumers OK"
+
   cmake-build-shared-libs:
     name: CMake BUILD_SHARED_LIBS Test
     runs-on: ubuntu-24.04
