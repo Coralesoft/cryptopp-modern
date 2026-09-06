@@ -340,6 +340,7 @@ function(check_compile_link_option opt var prog)
         COMMAND_SUCCESS
         ${CMAKE_BINARY_DIR}
         ${prog}
+        CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${cryptopp_SOURCE_DIR}/include"
         COMPILE_DEFINITIONS ${definitions}
     )
     if(COMMAND_SUCCESS)
