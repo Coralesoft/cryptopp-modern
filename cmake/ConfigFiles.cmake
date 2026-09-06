@@ -20,15 +20,10 @@ endfunction()
 function(_module_pkgconfig_files)
     message(STATUS "[cryptopp-modern] Generating pkgconfig files")
 
-    # DEBUG_POSTFIX applies to the uppercased build type, so match it the same way.
-    string(TOUPPER "${CMAKE_BUILD_TYPE}" _cryptopp_build_type)
-    if(_cryptopp_build_type STREQUAL "DEBUG")
-        get_target_property(target_debug_postfix cryptopp DEBUG_POSTFIX)
-        if("${target_debug_postfix}" MATCHES "-NOTFOUND$")
-            set(target_debug_postfix "")
-        endif()
-    endif()
-    set(MODULE_LINK_LIBS "-lcryptopp${target_debug_postfix}")
+    # The link name is resolved per configuration at generate time, so a
+    # postfix or OUTPUT_NAME on the target is reflected without inspecting
+    # the build type here.
+    set(MODULE_LINK_LIBS "-l$<TARGET_FILE_BASE_NAME:cryptopp>")
 
     # Keep relative pkg-config paths relative to ${prefix}, but pass absolute
     # GNUInstallDirs overrides through unchanged.
@@ -41,11 +36,17 @@ function(_module_pkgconfig_files)
     endforeach()
 
     # Primary file is named libcryptopp.pc to match upstream Crypto++, so
-    # `pkg-config libcryptopp` keeps working for existing consumers.
+    # `pkg-config libcryptopp` keeps working for existing consumers. Paths and
+    # the version are substituted now; the link name is written per
+    # configuration by file(GENERATE).
     configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.pc.in
-        ${CMAKE_CURRENT_BINARY_DIR}/libcryptopp.pc
+        ${CMAKE_CURRENT_BINARY_DIR}/libcryptopp.pc.configured
         @ONLY
+    )
+    file(GENERATE
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/libcryptopp.pc
+        INPUT ${CMAKE_CURRENT_BINARY_DIR}/libcryptopp.pc.configured
     )
 
     # Alias for consumers that adopted the fork's cryptopp-modern name; it

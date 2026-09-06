@@ -70,7 +70,7 @@ The project includes `CMakePresets.json` with pre-configured build configuration
 | `install-test` | Ninja | Release | For testing installation |
 | `ci-linux` | Ninja | Release | CI configuration for Linux |
 | `ci-macos` | Ninja | Release | CI configuration for macOS |
-| `ci-windows` | Visual Studio 17 2022 | Release | CI configuration for Windows |
+| `ci-windows` | Visual Studio 17 2022 | - | CI configuration for Windows |
 
 ### Using Presets
 

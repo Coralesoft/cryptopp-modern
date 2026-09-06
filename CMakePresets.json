@@ -98,7 +98,6 @@
       "description": "Configuration for Windows CI builds",
       "inherits": "msvc",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
         "CRYPTOPP_BUILD_TESTING": "ON"
       }
     },

@@ -163,11 +163,8 @@ jobs:
     - name: Build
       run: cmake --build build/ci-windows --config Release
 
-    - name: Run validation tests
-      run: ./build/ci-windows/Release/cryptest.exe v
-
-    - name: Run test vectors
-      run: ./build/ci-windows/Release/cryptest.exe tv all
+    - name: Run the test suite through CTest
+      run: ctest --test-dir build/ci-windows -C Release -V --no-tests=error
 
   cmake-windows-arm64:
     # ARM64 Windows host with the Visual Studio generator, covering issue #43:
