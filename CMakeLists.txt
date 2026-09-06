@@ -198,9 +198,10 @@ endif()
 # Testing
 # ------------------------------------------------------------------------------
 
-if(CRYPTOPP_BUILD_TESTING)
-    enable_testing()
-endif()
+# Always enabled so that turning CRYPTOPP_BUILD_TESTING off in an existing
+# build directory regenerates an empty test list instead of leaving the
+# previous one behind. Test registration stays conditional.
+enable_testing()
 
 # ------------------------------------------------------------------------------
 # Build the library
@@ -1605,7 +1606,7 @@ if(CRYPTOPP_BUILD_TESTING)
         NAME cryptopp-modern-build_cryptest
         COMMAND
             "${CMAKE_COMMAND}" --build ${CMAKE_BINARY_DIR} --target cryptest
-            --config ${CMAKE_BUILD_TYPE}
+            --config $<CONFIG>
     )
     set_tests_properties(
         cryptopp-modern-build_cryptest
@@ -1701,7 +1702,7 @@ if(CRYPTOPP_INSTALL)
     )
     install(
         FILES
-            ${CMAKE_CURRENT_BINARY_DIR}/libcryptopp.pc
+            ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/libcryptopp.pc
             ${CMAKE_CURRENT_BINARY_DIR}/cryptopp-modern.pc
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
         COMPONENT ${dev}
@@ -1768,4 +1769,8 @@ if(CRYPTOPP_BUILD_SHARED)
     list(APPEND cryptopp_LIBRARY_TYPES shared)
 endif()
 message(STATUS "[cryptopp-modern] Libraries: ${cryptopp_LIBRARY_TYPES}")
-message(STATUS "[cryptopp-modern] Build type: ${CMAKE_BUILD_TYPE}")
+if(CMAKE_CONFIGURATION_TYPES)
+    message(STATUS "[cryptopp-modern] Configurations: ${CMAKE_CONFIGURATION_TYPES}")
+else()
+    message(STATUS "[cryptopp-modern] Build type: ${CMAKE_BUILD_TYPE}")
+endif()
