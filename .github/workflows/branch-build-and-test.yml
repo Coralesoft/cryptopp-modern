@@ -113,7 +113,32 @@ jobs:
       run: cmake --build build/ci-macos -j"$(sysctl -n hw.ncpu)"
 
     - name: Run validation tests
-      run: ./build/ci-macos/cryptest.exe v
+      run: |
+        set -o pipefail
+        ./build/ci-macos/cryptest.exe v | tee cryptest-v.log
+
+    - name: Check Apple arm64 hardware feature detection
+      if: runner.arch == 'ARM64'
+      run: |
+        FEATURES=$(grep -o 'hasASIMD == .*' cryptest-v.log | head -1)
+        echo "$FEATURES"
+        # Every 64-bit Apple core implements these.
+        for f in hasASIMD hasAES hasPMULL hasSHA1 hasSHA2; do
+          echo "$FEATURES" | grep -q "$f == 1" || { echo "ERROR: $f not detected"; exit 1; }
+        done
+        # The optional extensions must agree with the OS. The first key that
+        # exists wins; the second names are the pre-macOS 12 spellings.
+        check() {
+          flag=$1; shift
+          expected=0
+          for key in "$@"; do
+            if value=$(sysctl -n "$key" 2>/dev/null); then expected=$value; break; fi
+          done
+          echo "$FEATURES" | grep -q "$flag == $expected" || { echo "ERROR: $flag disagrees with the kernel ($expected)"; exit 1; }
+        }
+        check hasCRC32 hw.optional.armv8_crc32
+        check hasSHA3 hw.optional.arm.FEAT_SHA3 hw.optional.armv8_2_sha3
+        check hasSHA512 hw.optional.arm.FEAT_SHA512 hw.optional.armv8_2_sha512
 
     - name: Run test vectors
       run: ./build/ci-macos/cryptest.exe tv all
