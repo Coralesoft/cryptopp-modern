@@ -20,9 +20,11 @@ endfunction()
 function(_module_pkgconfig_files)
     message(STATUS "[cryptopp-modern] Generating pkgconfig files")
 
-    if(CMAKE_BUILD_TYPE EQUAL "Debug")
+    # DEBUG_POSTFIX applies to the uppercased build type, so match it the same way.
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" _cryptopp_build_type)
+    if(_cryptopp_build_type STREQUAL "DEBUG")
         get_target_property(target_debug_postfix cryptopp DEBUG_POSTFIX)
-        if(${target_debug_postfix} MATCHES "-NOTFOUND$")
+        if("${target_debug_postfix}" MATCHES "-NOTFOUND$")
             set(target_debug_postfix "")
         endif()
     endif()
