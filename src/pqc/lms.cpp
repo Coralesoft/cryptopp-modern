@@ -1535,6 +1535,7 @@ void HSSSigner<HSS_PARAMS>::SignMessage(
     }
     catch (...)
     {
+        m_reconciled = false;
         m_store->AbortReservation(reservation);
         throw;
     }
