@@ -1584,6 +1584,11 @@ void HSSSigner<HSS_PARAMS>::BuildSubtreeChain(
 {
     using namespace LMS_Internal;
 
+    // Level 0 is the root and has no parent.
+    CRYPTOPP_ASSERT(fromLevel >= 1);
+    if (fromLevel == 0)
+        throw InvalidArgument("HSSSigner: invalid subtree level");
+
     LevelTable<HSS_PARAMS> levels;
 
     for (unsigned int level = fromLevel; level < HSS_PARAMS::L; level++)
