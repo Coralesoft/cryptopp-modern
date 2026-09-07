@@ -593,10 +593,11 @@ void LMSPrivateKey<LMS_PARAMS, OTS_PARAMS>::GenerateRandom(
     RandomNumberGenerator &rng, const NameValuePairs &params)
 {
     CRYPTOPP_UNUSED(params);
-    m_seed.resize(SEED_SIZE);
-    m_I.resize(I_SIZE);
-    rng.GenerateBlock(m_seed, SEED_SIZE);
-    rng.GenerateBlock(m_I, I_SIZE);
+    SecByteBlock seed(SEED_SIZE), identifier(I_SIZE);
+    rng.GenerateBlock(seed, SEED_SIZE);
+    rng.GenerateBlock(identifier, I_SIZE);
+    m_seed.swap(seed);
+    m_I.swap(identifier);
 }
 
 template <class LMS_PARAMS, class OTS_PARAMS>
@@ -1225,10 +1226,11 @@ void HSSPrivateKey<HSS_PARAMS>::GenerateRandom(
     RandomNumberGenerator &rng, const NameValuePairs &params)
 {
     CRYPTOPP_UNUSED(params);
-    m_seed.resize(SEED_SIZE);
-    m_I.resize(I_SIZE);
-    rng.GenerateBlock(m_seed, SEED_SIZE);
-    rng.GenerateBlock(m_I, I_SIZE);
+    SecByteBlock seed(SEED_SIZE), identifier(I_SIZE);
+    rng.GenerateBlock(seed, SEED_SIZE);
+    rng.GenerateBlock(identifier, I_SIZE);
+    m_seed.swap(seed);
+    m_I.swap(identifier);
 }
 
 template <class HSS_PARAMS>
